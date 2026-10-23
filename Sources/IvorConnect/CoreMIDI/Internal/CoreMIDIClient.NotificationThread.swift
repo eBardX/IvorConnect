@@ -27,8 +27,13 @@ extension CoreMIDIClient {
                 RunLoop.current.run()
             }
 
+            // Callers block on this thread (see `perform(body:)`), often from the main thread, so it runs at the highest
+            // quality of service, lest a waiting thread be held up by a lower-priority one.
             thread.name = "IvorConnect.CoreMIDI"
+            thread.qualityOfService = .userInteractive
+
             thread.start()
+
             started.wait()
 
             self.runLoop = runLoop! // swiftlint:disable:this force_unwrapping
@@ -56,6 +61,7 @@ extension CoreMIDIClient.NotificationThread {
         else { return body() }
 
         nonisolated(unsafe) var result: Result?
+
         let done = DispatchSemaphore(value: 0)
 
         withoutActuallyEscaping(body) { body in
