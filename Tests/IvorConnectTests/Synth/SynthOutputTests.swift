@@ -46,6 +46,44 @@ extension SynthOutputTests {
     }
 
     @Test
+    func preload_generalMIDI2InstrumentSounds() throws {
+        #expect(try renderPeak(playingVariation(preloading: false), seconds: 0.5) == 0)
+        #expect(try renderPeak(playingVariation(preloading: true), seconds: 0.5) > 0.01)
+    }
+
+    //
+    // GS keeps Detuned EP 1 as program 5's variation 8, which macOS's sound bank has, and which this synth selects
+    // as bank LSB 8: loading it must leave the channel on bank 0's program 5 all the same.
+    //
+    @Test
+    func preload_setsChannelsBackToBank0() throws {
+        let variation = SynthOutput.Selection(channel: 2,
+                                              bankLSB: 8,
+                                              program: 5)
+        let banked = try makeSynth()
+        let preloaded = try makeSynth()
+        let fresh = try makeSynth()
+
+        try banked.preload([variation])
+        try preloaded.preload([variation])
+
+        banked.send(message: .controlChange(2, .bankSelectLSB, 8), at: .now)
+
+        for synth in [banked, preloaded, fresh] {
+            synth.send(message: .programChange(2, 5), at: .now)
+            synth.send(message: .noteOn(2, 60, 100), at: .now)
+            synth.waitForDueMessages()
+        }
+
+        let bankedSamples = try renderSamples(banked, seconds: 0.5)
+        let preloadedSamples = try renderSamples(preloaded, seconds: 0.5)
+        let freshSamples = try renderSamples(fresh, seconds: 0.5)
+
+        #expect(maxDifference(bankedSamples, freshSamples) > 0.001)
+        #expect(maxDifference(preloadedSamples, freshSamples) < 0.0001)
+    }
+
+    @Test
     func restart_startsAStoppedEngine() throws {
         let synth = try makeSynth()
 

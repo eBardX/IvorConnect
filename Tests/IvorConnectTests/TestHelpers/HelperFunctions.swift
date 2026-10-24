@@ -46,6 +46,33 @@ func pitchAfterLeap(portamento: Bool) throws -> Double {
     return try estimatedPitch(renderSamples(synth, seconds: 0.1))
 }
 
+// The largest difference between two renderings, sample by sample.
+func maxDifference(_ samples1: [Float],
+                   _ samples2: [Float]) -> Float {
+    zip(samples1, samples2).map { abs($0 - $1) }.max() ?? 0
+}
+
+// An offline synth playing middle C on a General MIDI Level 2 variation — Acoustic Grand Piano (wide) — which the
+// sound bank lacks, so that it plays bank 0's piano once loaded.
+func playingVariation(preloading: Bool) throws -> SynthOutput {
+    let synth = try makeSynth()
+
+    if preloading {
+        try synth.preload([SynthOutput.Selection(channel: 1,
+                                                 bankMSB: 121,
+                                                 bankLSB: 1,
+                                                 program: 1)])
+    }
+
+    synth.send(message: .controlChange(1, .bankSelectMSB, 121), at: .now)
+    synth.send(message: .controlChange(1, .bankSelectLSB, 1), at: .now)
+    synth.send(message: .programChange(1, 1), at: .now)
+    synth.send(message: .noteOn(1, 60, 100), at: .now)
+    synth.waitForDueMessages()
+
+    return synth
+}
+
 // A note message (on middle C) for the render queue.
 func renderMessage(_ status: UInt8,
                    _ data2: UInt8 = 100,

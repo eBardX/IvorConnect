@@ -7,15 +7,19 @@ public import IvorMIDI
 internal import AudioToolbox
 internal import Dispatch
 internal import Synchronization
+internal import XestiTools
 
 /// A MIDI output that plays on Apple’s multitimbral MIDI synth
 /// (AUMIDISynth), loaded with a General MIDI sound bank, so that music can
 /// be heard with no other software.
 ///
-/// Each channel keeps its own program. Every message is placed at its exact
-/// sample: messages wait in a time-ordered queue until shortly before they
-/// are due, then go to the render thread, which hands each one to the synth
-/// just before the buffer it falls in, with its offset into that buffer.
+/// Each channel keeps its own program. Only the 128 programs of bank 0 are
+/// loaded at first; ``preload(_:)`` loads any other instrument a channel will
+/// select, such as a General MIDI Level 2 instrument or drum set. Every
+/// message is placed at its exact sample: messages wait in a time-ordered
+/// queue until shortly before they are due, then go to the render thread,
+/// which hands each one to the synth just before the buffer it falls in, with
+/// its offset into that buffer.
 ///
 /// The synth’s audio engine restarts by itself after a configuration change
 /// (headphones plugged in, say) stops it. On iOS, restart it with
@@ -93,6 +97,7 @@ public final class SynthOutput {
         self.engine = engine
         self.lead = lead
         self.pending = []
+        self.preloaded = Set((1...128).map { Selection(channel: 1, program: MIDIProgram(clamping: $0)) })
         self.queue = DispatchQueue(label: "IvorConnect.SynthOutput",
                                    qos: .userInteractive)
         self.renderAhead = Atomic(0)
@@ -149,6 +154,7 @@ public final class SynthOutput {
 
     private var configurationObserver: (any NSObjectProtocol)?
     private var pending: [(bytes: [UInt8], time: ContinuousClock.Instant)]     // only touched on `queue`
+    private var preloaded: Set<Selection>                                       // only touched on `queue`
 }
 
 // MARK: -
@@ -164,6 +170,35 @@ extension SynthOutput {
     #endif
 
     // MARK: Public Instance Methods
+
+    /// Loads the instruments that the provided selections choose, so that
+    /// they sound.
+    ///
+    /// The synth sounds only instruments it has loaded: on a device, a
+    /// channel that selects any other stays silent. (The iOS simulator and
+    /// macOS load bank 0's programs on demand, but no other bank's.) Call
+    /// this before playing anything that selects an instrument outside bank
+    /// 0. A selection the sound bank lacks loads the same program in bank 0
+    /// instead — or, in the percussion bank, the first kit — which is what
+    /// the channel then plays, as General MIDI Level 2 asks of a device that
+    /// lacks an instrument. A selection already loaded is skipped.
+    ///
+    /// Loading changes each channel it uses as if it had received the
+    /// selection’s bank select, so afterward those channels are set back to
+    /// bank 0. Call it only while nothing is playing through the synth.
+    ///
+    /// - Parameter selections: The instruments to load.
+    ///
+    /// - Throws:   ``Error/instrumentPreloadFailed(_:)`` if the synth fails
+    ///             to load them.
+    public func preload(_ selections: some Sequence<Selection>) throws(Error) {
+        let selections = Array(selections)
+        let result = queue.sync {
+            Result { () throws(Error) in try _preload(selections) }
+        }
+
+        try result.get()
+    }
 
     /// Starts the audio engine again, if it has stopped.
     ///
@@ -327,6 +362,45 @@ extension SynthOutput {
         // A dispatch deadline and the sender's clock can disagree by a hair, so make sure nothing is stranded.
         if let next = pending.first {
             _scheduleRelease(at: next.time)
+        }
+    }
+
+    // Runs on `queue`.
+    private func _preload(_ selections: [Selection]) throws(Error) {
+        let selections = selections.map(\.loadable).filter { !preloaded.contains($0) }
+
+        guard !selections.isEmpty
+        else { return }
+
+        try Self._setPreload(true,
+                             on: audioUnit)
+
+        for selection in selections {
+            let channel = selection.channel.uintValue - 1
+
+            for (status, data1, data2) in [(0xb0 | channel, 0, selection.bankMSB.uintValue),
+                                           (0xb0 | channel, 32, selection.bankLSB.uintValue),
+                                           (0xc0 | channel, selection.program.uintValue - 1, 0)] {
+                let result = MusicDeviceMIDIEvent(audioUnit,
+                                                  UInt32(status),
+                                                  UInt32(data1),
+                                                  UInt32(data2),
+                                                  0)
+
+                guard result == noErr
+                else { throw .instrumentPreloadFailed(result) }
+            }
+
+            preloaded.insert(selection)
+        }
+
+        try Self._setPreload(false,
+                             on: audioUnit)
+
+        // The bank selects made while loading stay in effect on their channels.
+        for channel in Set(selections.map(\.channel.uintValue)) {
+            MusicDeviceMIDIEvent(audioUnit, UInt32(0xb0 | (channel - 1)), 0, 0, 0)
+            MusicDeviceMIDIEvent(audioUnit, UInt32(0xb0 | (channel - 1)), 32, 0, 0)
         }
     }
 
