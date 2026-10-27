@@ -97,7 +97,7 @@ public final class SynthOutput {
         self.engine = engine
         self.lead = lead
         self.pending = []
-        self.preloaded = Set((1...128).map { Selection(channel: 1, program: MIDIProgram(clamping: $0)) })
+        self.preloaded = Set((1...128).map { Selection(channel: 1, patch: MIDIPatch(program: MIDIProgram(clamping: $0))).loadable })
         self.queue = DispatchQueue(label: "IvorConnect.SynthOutput",
                                    qos: .userInteractive)
         self.renderAhead = Atomic(0)
@@ -378,9 +378,9 @@ extension SynthOutput {
         for selection in selections {
             let channel = selection.channel.uintValue - 1
 
-            for (status, data1, data2) in [(0xb0 | channel, 0, selection.bankMSB.uintValue),
-                                           (0xb0 | channel, 32, selection.bankLSB.uintValue),
-                                           (0xc0 | channel, selection.program.uintValue - 1, 0)] {
+            for (status, data1, data2) in [(0xb0 | channel, 0, selection.bank.msb.uintValue),
+                                           (0xb0 | channel, 32, selection.bank.lsb.uintValue),
+                                           (0xc0 | channel, selection.patch.program.uintValue - 1, 0)] {
                 let result = MusicDeviceMIDIEvent(audioUnit,
                                                   UInt32(status),
                                                   UInt32(data1),

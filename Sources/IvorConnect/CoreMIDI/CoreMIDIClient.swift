@@ -113,6 +113,18 @@ public final class CoreMIDIClient {
 
 extension CoreMIDIClient {
 
+    // MARK: Public Type Methods
+
+    /// Turns on the MIDI network session and lets anyone connect to it, so
+    /// that other devices can reach this app over Wi-Fi — and appear among
+    /// the ``destinations``.
+    public static func enableNetworkSession() {
+        let networkSession = MIDINetworkSession.default()
+
+        networkSession.isEnabled = true
+        networkSession.connectionPolicy = .anyone
+    }
+
     // MARK: Public Instance Properties
 
     /// Every destination available right now, in CoreMIDI’s order.

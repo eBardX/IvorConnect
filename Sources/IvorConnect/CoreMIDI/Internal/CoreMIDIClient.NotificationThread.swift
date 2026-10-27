@@ -55,7 +55,9 @@ extension CoreMIDIClient.NotificationThread {
 
     // MARK: Internal Instance Methods
 
-    // Runs `body` on this thread, and waits for its result.
+    // Runs `body` on this thread, and waits for its result. The run loop releases the block only after it returns,
+    // which can be after `done` wakes the caller, so the block reaches `body` through `pending`, which it clears before
+    // signalling: nothing still holds `body` when `withoutActuallyEscaping` checks that it didn't escape.
     internal func perform<Result>(body: () -> Result) -> Result {
         guard CFRunLoopGetCurrent() != runLoop
         else { return body() }
@@ -65,10 +67,11 @@ extension CoreMIDIClient.NotificationThread {
         let done = DispatchSemaphore(value: 0)
 
         withoutActuallyEscaping(body) { body in
-            nonisolated(unsafe) let body = body
+            nonisolated(unsafe) var pending: (() -> Result)? = body
 
             CFRunLoopPerformBlock(runLoop, CFRunLoopMode.defaultMode.rawValue) {
-                result = body()
+                result = pending?()
+                pending = nil
 
                 done.signal()
             }

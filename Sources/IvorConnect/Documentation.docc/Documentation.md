@@ -48,6 +48,11 @@ Then neither thread scheduling nor other work on the sending thread can
 disturb the music: CoreMIDI delivers each message at its timestamp, and the
 synth places it at its exact sample.
 
+A ``MIDIScheduler`` does this on a dedicated high-priority thread, for any
+state that can say what falls due and when it next needs to run. A
+``MIDISequencePlayer`` uses one to play a fixed ``MIDISequence`` from any
+position, first setting each channel to the patch it would have reached.
+
 ### Platform notes
 
 - Create a ``CoreMIDIClient`` before making any other CoreMIDI call, or
@@ -58,6 +63,11 @@ synth places it at its exact sample.
 - AUMIDISynth crashes if two instances load a sound bank or render at once.
   Never create a second ``SynthOutput`` while one is loading, and serialize
   any tests that use one.
+- On iOS (only), activate the audio session with
+  `AudioSession.activateForPlayback(preferredIOBufferDuration:)` before
+  making a ``SynthOutput``, and keep an `AudioSession.Monitor` to restart
+  the synth after an interruption and make it again after a media-services
+  reset.
 
 ## Topics
 
@@ -71,6 +81,13 @@ synth places it at its exact sample.
 ### Routing
 
 - ``MIDIRouter``
+- ``MIDIOutputChoice``
+
+### Playback
+
+- ``MIDIScheduler``
+- ``MIDISequence``
+- ``MIDISequencePlayer``
 
 ### CoreMIDI
 

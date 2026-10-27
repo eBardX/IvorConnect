@@ -58,8 +58,8 @@ extension SynthOutputTests {
     @Test
     func preload_setsChannelsBackToBank0() throws {
         let variation = SynthOutput.Selection(channel: 2,
-                                              bankLSB: 8,
-                                              program: 5)
+                                              patch: MIDIPatch(program: 5,
+                                                               bank: MIDIBank(msb: 0, lsb: 8)))
         let banked = try makeSynth()
         let preloaded = try makeSynth()
         let fresh = try makeSynth()

@@ -59,9 +59,8 @@ func playingVariation(preloading: Bool) throws -> SynthOutput {
 
     if preloading {
         try synth.preload([SynthOutput.Selection(channel: 1,
-                                                 bankMSB: 121,
-                                                 bankLSB: 1,
-                                                 program: 1)])
+                                                 patch: MIDIPatch(program: 1,
+                                                                  bank: MIDIBank(msb: 121, lsb: 1)))])
     }
 
     synth.send(message: .controlChange(1, .bankSelectMSB, 121), at: .now)
