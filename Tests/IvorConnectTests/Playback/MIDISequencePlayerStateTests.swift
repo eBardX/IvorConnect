@@ -41,7 +41,7 @@ extension MIDISequencePlayerStateTests {
     }
 
     @Test
-    func resendPrograms_sendsProgramsReachedByNow() {
+    func resendChannelSettings_sendsSettingsReachedByNow() {
         let output = RecordingOutput()
         var state = Self.makeState(output: output)
         let start = ContinuousClock.now
@@ -51,8 +51,8 @@ extension MIDISequencePlayerStateTests {
 
         let resent = start.advanced(by: .seconds(1))
 
-        state.resendPrograms(on: [1],
-                             at: resent)
+        state.resendChannelSettings(on: [1],
+                                    at: resent)
 
         #expect(output.sent.last?.message == .programChange(1, 1))
         #expect(output.sent.last?.time == resent)

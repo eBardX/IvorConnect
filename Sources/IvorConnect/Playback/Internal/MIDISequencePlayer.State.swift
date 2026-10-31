@@ -55,10 +55,10 @@ extension MIDISequencePlayer.State {
         return .seconds(seconds) + .microseconds(attoseconds / 1_000_000_000_000)
     }
 
-    internal func resendPrograms(on channels: Set<MIDIChannel>,
-                                 at now: ContinuousClock.Instant) {
-        for message in sequence.programChanges(before: position(at: now),
-                                               on: channels) {
+    internal func resendChannelSettings(on channels: Set<MIDIChannel>,
+                                        at now: ContinuousClock.Instant) {
+        for message in sequence.channelSettings(before: position(at: now),
+                                                on: channels) {
             router.send(message: message,
                         at: now)
         }
@@ -85,14 +85,14 @@ extension MIDISequencePlayer.State {
         return now.advanced(by: .seconds(1))
     }
 
-    // Picking up partway through, each channel first gets the program it would have reached.
+    // Picking up partway through, each channel first gets the program and pan it would have reached.
     internal mutating func start(from position: Duration,
                                  at startTime: ContinuousClock.Instant) {
         isPlaying = true
         nextIndex = sequence.firstIndex(at: position)
         origin = startTime - position
 
-        for message in sequence.programChanges(before: position) {
+        for message in sequence.channelSettings(before: position) {
             router.send(message: message,
                         at: startTime)
         }

@@ -51,48 +51,44 @@ extension MIDISequence {
         events.firstIndex { $0.time >= position } ?? events.endIndex
     }
 
-    /// Returns the messages that set each channel to the bank and program it
-    /// has reached by the provided position.
+    /// Returns the messages that set each channel to the bank, program and
+    /// pan it has reached by the provided position.
     ///
-    /// For each channel that has had a program change by then, the messages
-    /// are its latest bank select MSB and LSB, if any, then its latest
-    /// program change, in channel order.
+    /// For each channel, in channel order, the messages are its latest bank
+    /// select MSB and LSB, then its latest program change, then its latest
+    /// pan MSB and LSB — each only if it has had one by then. A pan LSB
+    /// sent before the channel's latest pan MSB is left out, since the MSB
+    /// resets it.
     ///
     /// - Parameter position:   The time from the start. Events at this time
     ///                         don’t count, since they are still to be sent.
     /// - Parameter channels:   The channels to include, or `nil` for all of
     ///                         them.
     ///
-    /// - Returns:  The bank select and program change messages.
-    public func programChanges(before position: Duration,
-                               on channels: Set<MIDIChannel>? = nil) -> [MIDIChannelMessage] {
-        var latestMSB: [MIDIChannel: MIDIChannelMessage] = [:]
-        var latestLSB: [MIDIChannel: MIDIChannelMessage] = [:]
-        var latestProgram: [MIDIChannel: MIDIChannelMessage] = [:]
+    /// - Returns:  The bank select, program change and pan messages.
+    public func channelSettings(before position: Duration,
+                                on channels: Set<MIDIChannel>? = nil) -> [MIDIChannelMessage] {
+        var latest: [MIDIChannel: [Int: MIDIChannelMessage]] = [:]
 
         for event in events.prefix(firstIndex(at: position)) {
             let channel = event.message.channel
 
-            guard channels?.contains(channel) ?? true
+            guard channels?.contains(channel) ?? true,
+                  let slot = Self._settingSlot(event.message)
             else { continue }
 
-            switch event.message {
-            case .controlChange(_, .bankSelectLSB, _):
-                latestLSB[channel] = event.message
+            latest[channel, default: [:]][slot] = event.message
 
-            case .controlChange(_, .bankSelectMSB, _):
-                latestMSB[channel] = event.message
-
-            case .programChange:
-                latestProgram[channel] = event.message
-
-            default:
-                break
+            //
+            // A pan MSB resets the LSB, so an earlier LSB no longer holds.
+            //
+            if case .controlChange(_, .panMSB, _) = event.message {
+                latest[channel]?[Self.panLSBSlot] = nil
             }
         }
 
-        return latestProgram.keys.sorted().flatMap { channel in
-            [latestMSB[channel], latestLSB[channel], latestProgram[channel]].compactMap(\.self)
+        return latest.keys.sorted().flatMap { channel in
+            latest[channel, default: [:]].sorted { $0.key < $1.key }.map(\.value)
         }
     }
 
@@ -135,6 +131,40 @@ extension MIDISequence {
         }
 
         return selections
+    }
+
+    // MARK: Private Type Properties
+
+    private static let bankLSBSlot = 1
+    private static let bankMSBSlot = 0
+    private static let panLSBSlot  = 4
+    private static let panMSBSlot  = 3
+    private static let programSlot = 2
+
+    // MARK: Private Type Methods
+
+    // Where a channel setting goes among `channelSettings(before:on:)`'s
+    // messages for its channel, or `nil` if the message isn't one.
+    private static func _settingSlot(_ message: MIDIChannelMessage) -> Int? {
+        switch message {
+        case .controlChange(_, .bankSelectLSB, _):
+            bankLSBSlot
+
+        case .controlChange(_, .bankSelectMSB, _):
+            bankMSBSlot
+
+        case .controlChange(_, .panLSB, _):
+            panLSBSlot
+
+        case .controlChange(_, .panMSB, _):
+            panMSBSlot
+
+        case .programChange:
+            programSlot
+
+        default:
+            nil
+        }
     }
 }
 

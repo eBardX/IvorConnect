@@ -27,31 +27,49 @@ extension MIDISequenceTests {
     }
 
     @Test
-    func programChanges_keepsLatestPerChannel() {
+    func channelSettings_keepsLatestPerChannel() {
         let sequence = MIDISequence(events: [Self.event(0, .programChange(1, 1)),
                                              Self.event(0, .programChange(2, 1)),
                                              Self.event(1, .programChange(1, 25))])
 
-        #expect(sequence.programChanges(before: .zero).isEmpty)
-        #expect(sequence.programChanges(before: .milliseconds(500)) == [.programChange(1, 1),
-                                                                        .programChange(2, 1)])
-        #expect(sequence.programChanges(before: .seconds(2)) == [.programChange(1, 25),
-                                                                 .programChange(2, 1)])
-        #expect(sequence.programChanges(before: .seconds(2),
-                                        on: [2]) == [.programChange(2, 1)])
+        #expect(sequence.channelSettings(before: .zero).isEmpty)
+        #expect(sequence.channelSettings(before: .milliseconds(500)) == [.programChange(1, 1),
+                                                                         .programChange(2, 1)])
+        #expect(sequence.channelSettings(before: .seconds(2)) == [.programChange(1, 25),
+                                                                  .programChange(2, 1)])
+        #expect(sequence.channelSettings(before: .seconds(2),
+                                         on: [2]) == [.programChange(2, 1)])
     }
 
     @Test
-    func programChanges_replaysBankSelects() {
+    func channelSettings_replaysBankSelects() {
         let sequence = MIDISequence(events: [Self.event(0, .programChange(1, 41)),
                                              Self.event(2, .controlChange(1, .bankSelectMSB, 121)),
                                              Self.event(2, .controlChange(1, .bankSelectLSB, 1)),
                                              Self.event(2, .programChange(1, 20))])
 
-        #expect(sequence.programChanges(before: .seconds(1)) == [.programChange(1, 41)])
-        #expect(sequence.programChanges(before: .seconds(3)) == [.controlChange(1, .bankSelectMSB, 121),
-                                                                 .controlChange(1, .bankSelectLSB, 1),
-                                                                 .programChange(1, 20)])
+        #expect(sequence.channelSettings(before: .seconds(1)) == [.programChange(1, 41)])
+        #expect(sequence.channelSettings(before: .seconds(3)) == [.controlChange(1, .bankSelectMSB, 121),
+                                                                  .controlChange(1, .bankSelectLSB, 1),
+                                                                  .programChange(1, 20)])
+    }
+
+    @Test
+    func channelSettings_replaysPanAfterProgram() {
+        let sequence = MIDISequence(events: [Self.event(0, .controlChange(2, .panMSB, 0)),
+                                             Self.event(0, .programChange(1, 41)),
+                                             Self.event(0, .controlChange(1, .panMSB, 64)),
+                                             Self.event(0, .controlChange(1, .panLSB, 8)),
+                                             Self.event(1, .controlChange(1, .panMSB, 127)),
+                                             Self.event(1, .noteOn(1, 60, 64))])
+
+        #expect(sequence.channelSettings(before: .seconds(1)) == [.programChange(1, 41),
+                                                                  .controlChange(1, .panMSB, 64),
+                                                                  .controlChange(1, .panLSB, 8),
+                                                                  .controlChange(2, .panMSB, 0)])
+        #expect(sequence.channelSettings(before: .seconds(2)) == [.programChange(1, 41),
+                                                                  .controlChange(1, .panMSB, 127),
+                                                                  .controlChange(2, .panMSB, 0)])
     }
 
     @Test
