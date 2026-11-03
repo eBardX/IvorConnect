@@ -12,6 +12,7 @@ MIDI playback through CoreMIDI and Apple’s built-in General MIDI synth.
 * [Installation](#installation)
     * [Swift Package Manager](#spm_installation)
 * [Quick Start](#quick_start)
+* [Documentation](#documentation)
 * [Reference Documentation](#reference_documentation)
 * [Credits](#credits)
 * [License](#license)
@@ -52,7 +53,7 @@ To add IvorConnect to a Swift package, add it to the `dependencies` in your
 ```swift
 dependencies: [
     .package(url: "https://github.com/eBardX/IvorConnect.git",
-             .upToNextMinor(from: "0.1.0"))
+             .upToNextMinor(from: "0.4.0"))
 ]
 ```
 
@@ -80,8 +81,8 @@ Play a note through the built-in synth and every app listening to a virtual
 source:
 
 ```swift
-import IvorMIDI
 import IvorConnect
+import IvorMIDI
 
 let client = try CoreMIDIClient(name: "MyApp")
 let source = try CoreMIDISourceOutput(client: client)
@@ -89,10 +90,19 @@ let synth = try SynthOutput(soundBankURL: SynthOutput.systemSoundBankURL)   // m
 let router = MIDIRouter(outputs: [source, synth])
 let start = ContinuousClock.now.advanced(by: .milliseconds(50))
 
-router.send(.noteOn(1, 60, 100), at: start)
-router.send(.noteOff(1, 60, 0), at: start.advanced(by: .seconds(1)))
+router.send(message: .noteOn(1, 60, 100), at: start)
+router.send(message: .noteOff(1, 60, 0), at: start.advanced(by: .seconds(1)))
 router.waitUntilDelivered()
 ```
+
+For the complete story — the outputs, routing, timing, sequence playback, and
+platform notes — see the [usage guide][guide].
+
+## <a name="documentation">Documentation</a>
+
+* [Using IvorConnect][guide] — a guide to using the public API, published as
+  part of the DocC documentation.
+* Every public declaration carries a DocC comment.
 
 ## <a name="reference_documentation">Reference Documentation</a>
 
@@ -107,6 +117,7 @@ John Gary Pusey (ebardx@gmail.com)
 IvorConnect is available under [the MIT license][license].
 
 [docc]:         https://www.swift.org/documentation/docc/
+[guide]:        https://eBardX.github.io/ivor-packages-docs/documentation/ivorconnect/usingivorconnect
 [ivormidi]:     https://github.com/eBardX/IvorMIDI
 [license]:      https://github.com/eBardX/IvorConnect/blob/main/LICENSE.md
 [refdoc]:       https://eBardX.github.io/ivor-packages-docs/documentation/ivorconnect
