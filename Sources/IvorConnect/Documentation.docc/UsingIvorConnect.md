@@ -165,8 +165,8 @@ player.start(from: .zero)
 ```
 
 ``MIDISequencePlayer/start(from:)`` can start partway through: it first sets
-each channel to the bank, program, and pan it would have reached there, which
-the sequence works out with ``MIDISequence/channelSettings(before:on:)``. When
+each channel to the bank, program, pan, and expression it would have reached
+there, which the sequence works out with ``MIDISequence/channelSettings(before:on:)``. When
 a destination comes back mid-performance,
 ``MIDISequencePlayer/resendChannelSettings(on:)`` sends its channels those
 settings again. The player doesn’t stop by itself after the last event: watch

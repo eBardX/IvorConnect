@@ -55,6 +55,24 @@ extension MIDISequenceTests {
     }
 
     @Test
+    func channelSettings_replaysExpressionAfterPan() {
+        let sequence = MIDISequence(events: [.init(time: .zero, message: .controlChange(1, .expressionControllerMSB, 40)),
+                                             .init(time: .zero, message: .controlChange(1, .expressionControllerLSB, 8)),
+                                             .init(time: .zero, message: .controlChange(1, .panMSB, 64)),
+                                             .init(time: .seconds(1), message: .controlChange(1, .expressionControllerMSB, 90)),
+                                             .init(time: .seconds(2), message: .controlChange(1, .expressionControllerLSB, 3))])
+
+        #expect(sequence.channelSettings(before: .milliseconds(500)) == [.controlChange(1, .panMSB, 64),
+                                                                         .controlChange(1, .expressionControllerMSB, 40),
+                                                                         .controlChange(1, .expressionControllerLSB, 8)])
+        #expect(sequence.channelSettings(before: .milliseconds(1_500)) == [.controlChange(1, .panMSB, 64),
+                                                                           .controlChange(1, .expressionControllerMSB, 90)])
+        #expect(sequence.channelSettings(before: .seconds(3)) == [.controlChange(1, .panMSB, 64),
+                                                                  .controlChange(1, .expressionControllerMSB, 90),
+                                                                  .controlChange(1, .expressionControllerLSB, 3)])
+    }
+
+    @Test
     func channelSettings_replaysPanAfterProgram() {
         let sequence = MIDISequence(events: [Self.event(0, .controlChange(2, .panMSB, 0)),
                                              Self.event(0, .programChange(1, 41)),

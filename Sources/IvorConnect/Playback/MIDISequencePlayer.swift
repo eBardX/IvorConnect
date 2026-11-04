@@ -6,7 +6,8 @@ public import IvorMIDI
 /// ``MIDIScheduler``.
 ///
 /// ``start(from:)`` plays from a position in the sequence, first setting
-/// each channel to the bank, program and pan it would have reached there;
+/// each channel to the bank, program, pan and expression it would have
+/// reached there;
 /// ``stop()`` stops, telling every channel to let go of its notes. The
 /// player doesn’t stop by itself after the last event, so whoever drives it
 /// watches ``position(at:)`` and calls ``stop()``.
@@ -71,9 +72,9 @@ extension MIDISequencePlayer {
         scheduler.withState { $0.position(at: now) }
     }
 
-    /// Sends the provided channels the banks, programs and pans they have
-    /// reached by now, for a device that came back while playing and so
-    /// missed them.
+    /// Sends the provided channels the banks, programs, pans and expression
+    /// they have reached by now, for a device that came back while playing
+    /// and so missed them.
     ///
     /// - Parameter channels:   The channels to send to.
     public func resendChannelSettings(on channels: Set<MIDIChannel>) {
