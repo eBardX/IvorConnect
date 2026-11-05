@@ -7,10 +7,14 @@ public import IvorMIDI
 ///
 /// ``start(from:)`` plays from a position in the sequence, first setting
 /// each channel to the bank, program, pan and expression it would have
-/// reached there;
+/// reached there, and to its volume;
 /// ``stop()`` stops, telling every channel to let go of its notes. The
 /// player doesn’t stop by itself after the last event, so whoever drives it
 /// watches ``position(at:)`` and calls ``stop()``.
+///
+/// Whether playing or not, ``setMutedTracks(_:)`` silences the notes of
+/// chosen tracks and ``setVolumes(_:)`` sets the volumes of chosen channels,
+/// both at once, so that a mix can follow the listener as the sequence plays.
 public final class MIDISequencePlayer {
 
     // MARK: Public Initializers
@@ -73,14 +77,48 @@ extension MIDISequencePlayer {
     }
 
     /// Sends the provided channels the banks, programs, pans and expression
-    /// they have reached by now, for a device that came back while playing
-    /// and so missed them.
+    /// they have reached by now, and the volumes set with ``setVolumes(_:)``,
+    /// for a device that came back while playing and so missed them.
     ///
     /// - Parameter channels:   The channels to send to.
     public func resendChannelSettings(on channels: Set<MIDIChannel>) {
         scheduler.withState {
             $0.resendChannelSettings(on: channels,
                                      at: .now)
+        }
+    }
+
+    /// Mutes the provided tracks, and only those.
+    ///
+    /// A muted track’s notes aren’t played, and any it has sounding are let
+    /// go of at once, unless another track is holding the same key on the
+    /// same channel. A note that started while its track was muted stays
+    /// silent to its end, even if the track is no longer muted. Only notes
+    /// are muted: a track’s other messages are sent all the same, and events
+    /// on no track always play.
+    ///
+    /// - Parameter tracks: The tracks to mute (see
+    ///                     ``MIDISequence/Event/track``).
+    public func setMutedTracks(_ tracks: Set<Int>) {
+        scheduler.withState {
+            $0.setMutedTracks(tracks,
+                              at: .now)
+        }
+    }
+
+    /// Sets the volume (CC 7) of the provided channels, leaving any others
+    /// as they are.
+    ///
+    /// Each volume that changes is sent at once, and all of them are sent
+    /// again whenever the player starts, so that they outlast anything the
+    /// channels hear in between. The volume of a channel that hasn’t been
+    /// set is up to the device.
+    ///
+    /// - Parameter volumes:    The volume for each channel.
+    public func setVolumes(_ volumes: [MIDIChannel: MIDIData1Value]) {
+        scheduler.withState {
+            $0.setVolumes(volumes,
+                          at: .now)
         }
     }
 
