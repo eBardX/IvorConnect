@@ -19,9 +19,9 @@ MIDI playback through CoreMIDI and Apple’s built-in General MIDI synth.
 
 ## <a name="overview">Overview</a>
 
-The IvorConnect framework sends [IvorMIDI][ivormidi] channel messages, each
-timestamped for the moment it should sound, to CoreMIDI and to Apple’s
-multitimbral MIDI synth. Every destination is a `MIDIOutput`:
+The IvorConnect framework sends [IvorMIDI][ivormidi] channel and system
+messages, each timestamped for the moment it should sound, to CoreMIDI and to
+Apple’s multitimbral MIDI synth. Every destination is a `MIDIOutput`:
 
 * `CoreMIDISourceOutput` publishes a virtual source that other apps can
   connect to.
@@ -30,10 +30,14 @@ multitimbral MIDI synth. Every destination is a `MIDIOutput`:
 * `SynthOutput` plays on AUMIDISynth with a General MIDI sound bank, placing
   every message at its exact sample.
 
+A `CoreMIDISourceInput` receives complete system exclusive messages from one
+CoreMIDI source, as an `AsyncStream`, and a `MIDIDeviceDiscovery` uses a pair of
+ports to find out what is connected.
+
 A `MIDIRouter` delivers each message to its channel’s outputs, keeping
 timestamps in order across all of them, so that a note-off sent “now” can
 never overtake a note-on already scheduled. A `CoreMIDIClient` lists the
-available destinations and reports every change to the MIDI setup.
+available sources and destinations and reports every change to the MIDI setup.
 
 ## <a name="requirements">Requirements</a>
 
@@ -72,8 +76,8 @@ Dependencies…** and enter the repository URL:
 https://github.com/eBardX/IvorConnect.git
 ```
 
-IvorConnect depends on [IvorMIDI][ivormidi] and [XestiTools][xestitools]; the
-Swift Package Manager resolves them automatically.
+IvorConnect depends on [IvorMIDI][ivormidi], [IvorMIDI2][ivormidi2], and
+[XestiTools][xestitools]; the Swift Package Manager resolves them automatically.
 
 ## <a name="quick_start">Quick Start</a>
 
@@ -119,6 +123,7 @@ IvorConnect is available under [the MIT license][license].
 [docc]:         https://www.swift.org/documentation/docc/
 [guide]:        https://eBardX.github.io/ivor-packages-docs/documentation/ivorconnect/usingivorconnect
 [ivormidi]:     https://github.com/eBardX/IvorMIDI
+[ivormidi2]:    https://github.com/eBardX/IvorMIDI2
 [license]:      https://github.com/eBardX/IvorConnect/blob/main/LICENSE.md
 [refdoc]:       https://eBardX.github.io/ivor-packages-docs/documentation/ivorconnect
 [spm]:          https://swift.org/package-manager/

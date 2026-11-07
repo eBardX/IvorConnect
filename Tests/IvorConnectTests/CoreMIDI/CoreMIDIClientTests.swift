@@ -1,8 +1,10 @@
 // © 2026 John Gary Pusey (see LICENSE.md)
 
+import CoreMIDI
 import Darwin
 @testable import IvorConnect
 import IvorMIDI
+import IvorMIDI2
 import Testing
 import XestiTools
 
@@ -13,6 +15,13 @@ struct CoreMIDIClientTests {
 // MARK: -
 
 extension CoreMIDIClientTests {
+    @Test
+    func eventListByteCount_leavesRoomBeyondTheWords() {
+        #expect(CoreMIDIClient.eventListByteCount(forWordCount: 0) > MemoryLayout<MIDIEventList>.size)
+        #expect(CoreMIDIClient.eventListByteCount(forWordCount: 668)
+                == MemoryLayout<MIDIEventList>.size + (668 + 64) * 8)
+    }
+
     @Test
     func sequencedTimestamp_isAlwaysLaterThanThePrevious() {
         #expect(CoreMIDIClient.sequencedTimestamp(5_000, after: 1_000) == 5_000)
@@ -50,5 +59,57 @@ extension CoreMIDIClientTests {
     func universalMIDIPacket_twoByteMessage() {
         #expect(CoreMIDIClient.universalMIDIPacket(for: .programChange(3, 5)) == 0x20c20400)     // program 5 is byte 4
         #expect(CoreMIDIClient.universalMIDIPacket(for: .channelPressure(1, 9)) == 0x20d00900)
+    }
+
+    @Test(arguments: [6, 273, 2_000])
+    func withEventList_systemExclusiveArrivesWhole(byteCount: Int) {
+        let bytes = (0..<(byteCount - 1)).map { UInt8($0 % 128) } + [0xf7]
+        let message = MIDISystemMessage.systemExclusive(bytes)
+        var calls = 0
+        var timestamps: Set<MIDITimeStamp> = []
+        var words: [UInt32] = []
+
+        let result = CoreMIDIClient.withEventList(for: message, timestamp: 1_234) { list in
+            calls += 1
+
+            for packet in list.unsafeSequence() {
+                timestamps.insert(packet.pointee.timeStamp)
+                words += packet.words()
+            }
+        }
+
+        var reader = MIDI2MessageReader()
+
+        #expect(result)
+        #expect(calls == 1)
+        #expect(timestamps == [1_234])
+        #expect(reader.read(words: words) == [.system(message, 1)])
+    }
+
+    @Test
+    func withEventList_systemRealTimeIsOneWord() {
+        var words: [UInt32] = []
+
+        CoreMIDIClient.withEventList(for: .start, timestamp: 1) { list in
+            for packet in list.unsafeSequence() {
+                words += packet.words()
+            }
+        }
+
+        #expect(words == [0x10fa0000])
+    }
+
+    @Test(arguments: [.eox,
+                      .systemExclusive([0x43, 0x80, 0xf7]),
+                      .systemExclusive([0x43, 0x00])] as [MIDISystemMessage])
+    func withEventList_unencodableSendsNothing(message: MIDISystemMessage) {
+        var calls = 0
+
+        let result = CoreMIDIClient.withEventList(for: message, timestamp: 1) { _ in
+            calls += 1
+        }
+
+        #expect(!result)
+        #expect(calls == 0)
     }
 }

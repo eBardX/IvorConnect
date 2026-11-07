@@ -22,7 +22,7 @@ extension SynthOutput {
 
         // MARK: Public Initializers
 
-        /// Creates a selection.
+        /// Creates a `Selection` instance with the provided channel and patch.
         ///
         /// - Parameter channel:    The channel that makes the selection.
         /// - Parameter patch:      The patch it selects.

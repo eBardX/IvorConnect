@@ -4,10 +4,13 @@ internal import IvorMIDI
 
 extension MIDISequencePlayer {
 
+    // MARK: Internal Nested Types
+
     // Everything the player's scheduler protects. While playing, `origin` is the moment the sequence's start falls
     // (in the past, when playing from partway through), so an event's due time is `origin` plus its time; `nextIndex`
-    // is the first event not yet sent. `soundingNotes` counts the notes each track has been sent and not yet let go of,
-    // so a track's note-off is sent only for a note that was sent.
+    // and `nextSystemIndex` are the first events of each kind not yet sent. `pickupPosition` is the position reported
+    // while dumps are resent ahead of the music. `soundingNotes` counts the notes each track has been sent and not yet
+    // let go of, so a track's note-off is sent only for a note that was sent.
     internal struct State {
 
         // MARK: Internal Initializers
@@ -17,7 +20,9 @@ extension MIDISequencePlayer {
             self.isPlaying = false
             self.mutedTracks = []
             self.nextIndex = 0
+            self.nextSystemIndex = 0
             self.origin = .now
+            self.pickupPosition = .zero
             self.router = router
             self.sequence = sequence
             self.soundingNotes = [:]
@@ -33,7 +38,9 @@ extension MIDISequencePlayer {
         internal var isPlaying: Bool
         internal var mutedTracks: Set<Int>
         internal var nextIndex: Int
+        internal var nextSystemIndex: Int
         internal var origin: ContinuousClock.Instant
+        internal var pickupPosition: Duration
         internal var soundingNotes: [SoundingNote: Int]
         internal var stoppedPosition: Duration
         internal var volumes: [MIDIChannel: MIDIData1Value]
@@ -54,24 +61,67 @@ extension MIDISequencePlayer.State {
 
         let elapsed = now - origin
 
-        guard elapsed > .zero
-        else { return .zero }
+        guard elapsed > pickupPosition
+        else { return pickupPosition }
 
         let (seconds, attoseconds) = elapsed.components
 
         return .seconds(seconds) + .microseconds(attoseconds / 1_000_000_000_000)
     }
 
+    // The music keeps playing, so unlike `start(from:at:)` this can't wait for dumps to arrive.
     internal func resendChannelSettings(on channels: Set<MIDIChannel>,
                                         at now: ContinuousClock.Instant) {
-        for message in sequence.channelSettings(before: position(at: now),
+        let position = position(at: now)
+        let settingsTime = _send(sequence.systemSettings(before: position,
+                                                         on: channels),
+                                 startingAt: now)
+
+        for message in sequence.channelSettings(before: position,
                                                 on: channels) {
             router.send(message: message,
-                        at: now)
+                        at: settingsTime)
         }
 
         _sendVolumes(on: channels,
-                     at: now)
+                     at: settingsTime)
+    }
+
+    // Sends every event of either kind due by `now` + `scheduleAhead`, each stamped with its exact time, and returns
+    // when the next one should be sent. At equal times, the system event goes first, so that setup comes before the
+    // notes it affects.
+    internal mutating func sendDueEvents(now: ContinuousClock.Instant,
+                                         scheduleAhead: Duration) -> ContinuousClock.Instant {
+        while true {
+            let event = sequence.events.indices.contains(nextIndex) ? sequence.events[nextIndex] : nil
+            let systemEvent = sequence.systemEvents.indices.contains(nextSystemIndex) ? sequence.systemEvents[nextSystemIndex] : nil
+
+            if let systemEvent, event.map({ systemEvent.time <= $0.time }) ?? true {
+                let dueTime = origin + systemEvent.time
+
+                guard dueTime - scheduleAhead <= now
+                else { return dueTime - scheduleAhead }
+
+                _send(systemEvent,
+                      at: dueTime)
+
+                nextSystemIndex += 1
+            } else if let event {
+                let dueTime = origin + event.time
+
+                guard dueTime - scheduleAhead <= now
+                else { return dueTime - scheduleAhead }
+
+                if _shouldSend(event) {
+                    router.send(message: event.message,
+                                at: dueTime)
+                }
+
+                nextIndex += 1
+            } else {
+                return now.advanced(by: .seconds(1))
+            }
+        }
     }
 
     // A note that goes silent here leaves its key sounding if another track holds it on the channel, since a note-off
@@ -103,44 +153,28 @@ extension MIDISequencePlayer.State {
         }
     }
 
-    // Sends every event due by `now` + `scheduleAhead`, each stamped with its exact time, and returns when the next
-    // one should be sent.
-    internal mutating func sendDueEvents(now: ContinuousClock.Instant,
-                                         scheduleAhead: Duration) -> ContinuousClock.Instant {
-        let events = sequence.events
-
-        while nextIndex < events.count {
-            let event = events[nextIndex]
-            let dueTime = origin + event.time
-
-            guard dueTime - scheduleAhead <= now
-            else { return dueTime - scheduleAhead }
-
-            if _shouldSend(event) {
-                router.send(message: event.message,
-                            at: dueTime)
-            }
-
-            nextIndex += 1
-        }
-
-        return now.advanced(by: .seconds(1))
-    }
-
-    // Picking up partway through, each channel first gets the program and pan it would have reached, and its volume.
+    // Picking up partway through, each device first gets the dumps it would have had, then each channel gets the
+    // program and pan it would have reached, and its volume. The music waits for the dumps, or a note could overtake
+    // them, so the reported position stays put until it starts.
     internal mutating func start(from position: Duration,
                                  at startTime: ContinuousClock.Instant) {
+        let settings = sequence.systemSettings(before: position)
+        let musicTime = _send(settings,
+                              startingAt: startTime)
+
         isPlaying = true
         nextIndex = sequence.firstIndex(at: position)
-        origin = startTime - position
+        nextSystemIndex = sequence.firstSystemIndex(at: position)
+        origin = musicTime - position
+        pickupPosition = settings.isEmpty ? .zero : position
 
         for message in sequence.channelSettings(before: position) {
             router.send(message: message,
-                        at: startTime)
+                        at: musicTime)
         }
 
         _sendVolumes(on: nil,
-                     at: startTime)
+                     at: musicTime)
     }
 
     internal mutating func stop(at now: ContinuousClock.Instant) {
@@ -152,6 +186,33 @@ extension MIDISequencePlayer.State {
     }
 
     // MARK: Private Instance Methods
+
+    private func _send(_ event: MIDISequence.SystemEvent,
+                       at time: ContinuousClock.Instant) {
+        if let channel = event.channel {
+            router.send(message: event.message,
+                        forChannel: channel,
+                        at: time)
+        } else {
+            router.broadcast(message: event.message,
+                             at: time)
+        }
+    }
+
+    // Sends each event when the one before it should have finished arriving, and returns when the last one should.
+    private func _send(_ events: [MIDISequence.SystemEvent],
+                       startingAt time: ContinuousClock.Instant) -> ContinuousClock.Instant {
+        var time = time
+
+        for event in events {
+            _send(event,
+                  at: time)
+
+            time = time.advanced(by: event.transmissionTime)
+        }
+
+        return time
+    }
 
     private func _sendVolumes(on channels: Set<MIDIChannel>?,
                               at time: ContinuousClock.Instant) {

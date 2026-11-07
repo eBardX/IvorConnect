@@ -55,6 +55,7 @@ extension SynthOutputTests {
     // GS keeps Detuned EP 1 as program 5's variation 8, which macOS's sound bank has, and which this synth selects
     // as bank LSB 8: loading it must leave the channel on bank 0's program 5 all the same.
     //
+
     @Test
     func preload_setsChannelsBackToBank0() throws {
         let variation = SynthOutput.Selection(channel: 2,
@@ -130,6 +131,18 @@ extension SynthOutputTests {
         synth.waitForDueMessages()
 
         #expect(try renderPeak(synth, seconds: 0.3) > 0.01)
+    }
+
+    @Test
+    func send_systemMessagesAreIgnored() throws {
+        let synth = try makeSynth()
+        let time = ContinuousClock.now
+
+        synth.send(message: .systemReset, at: time)
+        synth.send(message: .systemExclusive([0x7e, 0x7f, 0x09, 0x03, 0xf7]), at: time)
+        synth.waitForDueMessages()
+
+        #expect(try renderPeak(synth, seconds: 0.2) == 0)
     }
 
     @Test

@@ -4,6 +4,8 @@ internal import Synchronization
 
 extension CoreMIDIClient {
 
+    // MARK: Internal Nested Types
+
     // The destination outputs made with a client, held weakly, so that the client can reconnect each one whenever the
     // MIDI setup changes.
     internal final class DestinationOutputs {

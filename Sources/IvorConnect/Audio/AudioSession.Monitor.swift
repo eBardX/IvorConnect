@@ -10,8 +10,8 @@ extension AudioSession {
 
     // MARK: Public Nested Types
 
-    /// Reports what happens to the audio session that a synth must respond
-    /// to, for as long as the monitor is kept.
+    /// A monitor that reports what happens to the audio session that a synth
+    /// must respond to, for as long as it is kept.
     ///
     /// When an interruption ends, the synth’s audio engine has stopped:
     /// reactivate the session (see ``AudioSession/reactivate()``) and

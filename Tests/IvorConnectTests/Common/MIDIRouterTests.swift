@@ -12,6 +12,65 @@ struct MIDIRouterTests {
 
 extension MIDIRouterTests {
     @Test
+    func broadcast_heldBackToTheLatestTimeScheduled() {
+        let output = RecordingOutput()
+        let router = MIDIRouter(outputs: [output])
+        let future = ContinuousClock.now.advanced(by: .milliseconds(50))
+
+        router.send(message: .noteOn(1, 60, 100), at: future)
+        router.broadcast(message: .systemReset)
+
+        #expect(output.sentSystem.map(\.time) == [future])
+    }
+
+    @Test
+    func broadcast_holdsBackLaterMessages() {
+        let output = RecordingOutput()
+        let router = MIDIRouter(outputs: [output])
+        let future = ContinuousClock.now.advanced(by: .milliseconds(50))
+
+        router.broadcast(message: .systemReset, at: future)
+        router.send(message: .noteOff(1, 60, 0))
+
+        #expect(output.sent.map(\.time) == [future])
+    }
+
+    @Test
+    func broadcast_reachesEveryOutputOnce() {
+        let first = RecordingOutput()
+        let second = RecordingOutput()
+        let router = MIDIRouter(channelOutputs: [first, second, first, nil])
+
+        router.broadcast(message: .start)
+
+        #expect(first.sentSystem.map(\.message) == [.start])
+        #expect(second.sentSystem.map(\.message) == [.start])
+    }
+
+    @Test
+    func broadcast_sharedOutputsReceiveItOnce() {
+        let shared = RecordingOutput()
+        let router = MIDIRouter(outputs: [shared])
+
+        router.broadcast(message: .start)
+
+        #expect(shared.sentSystem.count == 1)
+    }
+
+    @Test
+    func broadcast_skipsOutputsThatLeft() {
+        let first = RecordingOutput()
+        let second = RecordingOutput()
+        let router = MIDIRouter(channelOutputs: [first, second])
+
+        router.setOutput(nil, forChannel: 2)
+        router.broadcast(message: .start)
+
+        #expect(first.sentSystem.count == 1)
+        #expect(second.sentSystem.isEmpty)
+    }
+
+    @Test
     func channelOutputs_moreThanSixteenFails() async {
         await #expect(processExitsWith: .failure) {
             _ = MIDIRouter(channelOutputs: Array(repeating: nil, count: 17))
@@ -57,6 +116,21 @@ extension MIDIRouterTests {
         #expect(first.sent.count == 2 + 13)         // its channels 1 and 3, then 4–16
         #expect(second.sent.count == 1 + 13)
         #expect(router.outputs(forChannel: 16).count == 2)
+    }
+
+    @Test
+    func directSend_doesNotMoveTheRoutersTimeline() {
+        let output = RecordingOutput()
+        let router = MIDIRouter(outputs: [output])
+        let future = ContinuousClock.now.advanced(by: .milliseconds(50))
+        let later = future.advanced(by: .milliseconds(50))
+
+        router.send(message: .noteOn(1, 60, 100), at: future)
+        output.send(message: .systemExclusive([0x7d, 0xf7]), at: later)
+        router.send(message: .noteOff(1, 60, 0))
+
+        #expect(output.sent.map(\.time) == [future, future])
+        #expect(output.sentSystem.map(\.time) == [later])
     }
 
     @Test
@@ -111,6 +185,42 @@ extension MIDIRouterTests {
         router.send(message: .noteOff(1, 60, 0), at: second)
 
         #expect(output.sent.map(\.time) == [first, second])
+    }
+
+    @Test
+    func send_systemMessage_goesToTheChannelsOutputs() {
+        let first = RecordingOutput()
+        let second = RecordingOutput()
+        let router = MIDIRouter(channelOutputs: [first, second])
+
+        router.send(message: .start, forChannel: 2)
+
+        #expect(first.sentSystem.isEmpty)
+        #expect(second.sentSystem.map(\.message) == [.start])
+    }
+
+    @Test
+    func send_systemMessage_heldBackToTheLatestTimeScheduled() {
+        let output = RecordingOutput()
+        let router = MIDIRouter(outputs: [output])
+        let future = ContinuousClock.now.advanced(by: .milliseconds(50))
+
+        router.send(message: .noteOn(1, 60, 100), at: future)
+        router.send(message: .start, forChannel: 1)
+        router.send(message: .noteOff(1, 60, 0))
+
+        #expect(output.sentSystem.map(\.time) == [future])
+        #expect(output.sent.map(\.time) == [future, future])
+    }
+
+    @Test
+    func send_systemMessage_nowhereForAChannelWithNoOutput() {
+        let output = RecordingOutput()
+        let router = MIDIRouter(channelOutputs: [output, nil])
+
+        router.send(message: .start, forChannel: 2)
+
+        #expect(output.sentSystem.isEmpty)
     }
 
     @Test

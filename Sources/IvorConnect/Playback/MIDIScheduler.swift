@@ -4,7 +4,8 @@ internal import Dispatch
 internal import Foundation
 internal import Synchronization
 
-/// Runs MIDI in real time on a dedicated high-priority thread.
+/// A scheduler that runs MIDI in real time on a dedicated high-priority
+/// thread.
 ///
 /// The scheduler owns a state, behind a lock shared by its thread and its
 /// callers. While it runs, the thread calls the step it was created with,
@@ -21,8 +22,8 @@ public final class MIDIScheduler<State> {
 
     // MARK: Public Type Aliases
 
-    /// Sends what falls due by the provided instant plus the provided
-    /// schedule-ahead, and returns when it should next be called.
+    /// A closure that sends what falls due by the provided instant plus the
+    /// provided schedule-ahead, and returns when it should next be called.
     public typealias Step = @Sendable (inout State, ContinuousClock.Instant, Duration) -> ContinuousClock.Instant
 
     // MARK: Public Initializers
@@ -130,6 +131,7 @@ extension MIDIScheduler {
     ///                     scheduler’s thread waits for it.
     ///
     /// - Returns:  What the closure returns.
+    /// - Throws:   Whatever the closure throws.
     public func withState<Result: ~Copyable, E: Error>(_ body: (inout sending State) throws(E) -> sending Result) throws(E) -> sending Result {
         try state.withLock(body)
     }

@@ -4,6 +4,8 @@ internal import Synchronization
 
 extension SynthOutput {
 
+    // MARK: Internal Nested Types
+
     // Hands MIDI to the render thread, which mustn't wait on a lock. One thread pushes and one takes: a slot is
     // written before `tail` moves past it, and read before `head` does. Times are host-time seconds.
     internal final class RenderQueue {

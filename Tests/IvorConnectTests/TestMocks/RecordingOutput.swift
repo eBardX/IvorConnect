@@ -13,9 +13,14 @@ final class RecordingOutput {
         storage.withLock { $0 }
     }
 
+    var sentSystem: [(message: MIDISystemMessage, time: ContinuousClock.Instant)] {
+        systemStorage.withLock { $0 }
+    }
+
     // MARK: Private Instance Properties
 
     private let storage = Mutex<[(message: MIDIChannelMessage, time: ContinuousClock.Instant)]>([])
+    private let systemStorage = Mutex<[(message: MIDISystemMessage, time: ContinuousClock.Instant)]>([])
 }
 
 // MARK: - MIDIOutput
@@ -27,5 +32,10 @@ extension RecordingOutput: MIDIOutput {
     func send(message: MIDIChannelMessage,
               at time: ContinuousClock.Instant) {
         storage.withLock { $0.append((message, time)) }
+    }
+
+    func send(message: MIDISystemMessage,
+              at time: ContinuousClock.Instant) {
+        systemStorage.withLock { $0.append((message, time)) }
     }
 }

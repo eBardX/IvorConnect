@@ -5,8 +5,8 @@ public import IvorMIDI
 internal import Darwin
 internal import XestiTools
 
-/// Delivers each MIDI channel message to its channel’s outputs, keeping
-/// timestamps in order across all of them.
+/// A router that delivers each MIDI channel message to its channel’s
+/// outputs, keeping timestamps in order across all of them.
 ///
 /// Messages are usually scheduled slightly ahead of time, so a message sent
 /// “now” (say, a note-off from a key press) is held back to the latest time
@@ -18,6 +18,11 @@ internal import XestiTools
 /// (``init(channelOutputs:)``). In the second case, the remaining channels
 /// go to every output in use, so that messages such as all-notes-off reach
 /// all of them.
+///
+/// A system message has no channel, so a router can’t choose outputs for it. A
+/// message for one device goes directly to that device’s output, or through
+/// ``send(message:forChannel:at:)`` to keep it on the router’s timeline, and
+/// ``broadcast(message:at:)`` sends a message to every output in use.
 ///
 /// A router is not thread-safe. Protect it with a lock if it is shared.
 public final class MIDIRouter {
@@ -72,6 +77,23 @@ extension MIDIRouter {
 
     // MARK: Public Instance Methods
 
+    /// Sends a system message to every output in use, once each.
+    ///
+    /// - Parameter message:    The message to send.
+    /// - Parameter time:       The time at which the message should arrive,
+    ///                         or `nil` for as soon as possible. Either way,
+    ///                         it is held back to the latest time already
+    ///                         scheduled, if that is later.
+    public func broadcast(message: MIDISystemMessage,
+                          at time: ContinuousClock.Instant? = nil) {
+        let time = _scheduledTime(time)
+
+        for output in _outputsInUse() {
+            output.send(message: message,
+                        at: time)
+        }
+    }
+
     /// Returns the outputs that the provided channel goes to.
     ///
     /// - Parameter channel:    The channel.
@@ -100,11 +122,29 @@ extension MIDIRouter {
     ///                         scheduled, if that is later.
     public func send(message: MIDIChannelMessage,
                      at time: ContinuousClock.Instant? = nil) {
-        let time = max(time ?? .now, latestTime)
-
-        latestTime = time
+        let time = _scheduledTime(time)
 
         for output in routes[Self._index(of: message.channel)] {
+            output.send(message: message,
+                        at: time)
+        }
+    }
+
+    /// Sends a system message to the outputs of a channel.
+    ///
+    /// - Parameter message:    The message to send.
+    /// - Parameter channel:    The channel whose outputs it goes to. This
+    ///                         chooses a route only.
+    /// - Parameter time:       The time at which the message should arrive,
+    ///                         or `nil` for as soon as possible. Either way,
+    ///                         it is held back to the latest time already
+    ///                         scheduled, if that is later.
+    public func send(message: MIDISystemMessage,
+                     forChannel channel: MIDIChannel,
+                     at time: ContinuousClock.Instant? = nil) {
+        let time = _scheduledTime(time)
+
+        for output in routes[Self._index(of: channel)] {
             output.send(message: message,
                         at: time)
         }
@@ -169,19 +209,34 @@ extension MIDIRouter {
 
     // MARK: Private Instance Methods
 
-    // Every output any assigned channel uses, once each, for the spare channels.
-    private func _routeSpareChannels() {
-        guard assignedCount < Self.channelCount
-        else { return }
-
+    // Every output any assigned channel uses, once each.
+    private func _outputsInUse() -> [any MIDIOutput] {
         var inUse: [any MIDIOutput] = []
 
         for output in routes.prefix(assignedCount).joined() where !inUse.contains(where: { $0 === output }) {
             inUse.append(output)
         }
 
+        return inUse
+    }
+
+    private func _routeSpareChannels() {
+        guard assignedCount < Self.channelCount
+        else { return }
+
+        let inUse = _outputsInUse()
+
         for index in assignedCount..<Self.channelCount {
             routes[index] = inUse
         }
+    }
+
+    // `time`, or now, held back to the latest time already scheduled, which it then becomes.
+    private func _scheduledTime(_ time: ContinuousClock.Instant?) -> ContinuousClock.Instant {
+        let time = max(time ?? .now, latestTime)
+
+        latestTime = time
+
+        return time
     }
 }

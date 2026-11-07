@@ -48,6 +48,22 @@ extension MIDISchedulerTests {
     }
 
     @Test
+    func start_withoutPrepare_steps() async {
+        let scheduler = MIDIScheduler(state: 0,
+                                      threadName: "Test") { state, now, _ in
+            state += 1
+
+            return now.advanced(by: .milliseconds(1))
+        }
+
+        scheduler.start()
+
+        #expect(await waitUntil { scheduler.withState { $0 > 0 } })
+
+        scheduler.stop()
+    }
+
+    @Test
     func stop_whenNotStarted_doesNothing() {
         let scheduler = MIDIScheduler(state: 0,
                                       threadName: "Test") { _, now, _ in now }

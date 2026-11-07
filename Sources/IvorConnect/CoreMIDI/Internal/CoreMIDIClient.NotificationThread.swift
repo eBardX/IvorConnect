@@ -6,6 +6,8 @@ internal import Foundation
 
 extension CoreMIDIClient {
 
+    // MARK: Internal Nested Types
+
     // CoreMIDI calls every client's notification block on the run loop that was current when the process first
     // created a client, and only while that run loop runs. A command-line tool may run none at all, and a run loop that
     // later stops would silence every client created after it. So every client is created on this one thread, which

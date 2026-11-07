@@ -2,12 +2,12 @@
 
 public import IvorMIDI
 
-/// Plays a ``MIDISequence`` in real time through a ``MIDIRouter``, on a
-/// ``MIDIScheduler``.
+/// An object that plays a ``MIDISequence`` in real time through a
+/// ``MIDIRouter``, on a ``MIDIScheduler``.
 ///
-/// ``start(from:)`` plays from a position in the sequence, first setting
-/// each channel to the bank, program, pan and expression it would have
-/// reached there, and to its volume;
+/// ``start(from:)`` plays from a position in the sequence, first sending the
+/// system exclusive events before it, then setting each channel to the bank,
+/// program, pan and expression it would have reached there, and to its volume;
 /// ``stop()`` stops, telling every channel to let go of its notes. The
 /// player doesn’t stop by itself after the last event, so whoever drives it
 /// watches ``position(at:)`` and calls ``stop()``.
@@ -76,9 +76,14 @@ extension MIDISequencePlayer {
         scheduler.withState { $0.position(at: now) }
     }
 
-    /// Sends the provided channels the banks, programs, pans and expression
-    /// they have reached by now, and the volumes set with ``setVolumes(_:)``,
-    /// for a device that came back while playing and so missed them.
+    /// Sends the provided channels the system exclusive events, banks, programs,
+    /// pans and expression they have reached by now, and the volumes set with
+    /// ``setVolumes(_:)``, for a device that came back while playing and so
+    /// missed them.
+    ///
+    /// The music keeps playing while a dump arrives. A system event with no
+    /// channel isn’t sent, because it would reach every device, so give an event
+    /// meant for one device a channel.
     ///
     /// - Parameter channels:   The channels to send to.
     public func resendChannelSettings(on channels: Set<MIDIChannel>) {
@@ -125,6 +130,10 @@ extension MIDISequencePlayer {
     /// Starts playing from the provided position, with the first event due
     /// ``scheduleAhead`` from now, so that it isn’t late. Does nothing if
     /// already playing.
+    ///
+    /// If there are system exclusive events before the position, they go first,
+    /// and the music starts when they should have arrived. Until then,
+    /// ``position(at:)`` stays at the provided position.
     ///
     /// - Parameter position:   The time from the start of the sequence.
     public func start(from position: Duration) {

@@ -2,6 +2,8 @@
 
 extension SynthOutput.RenderQueue {
 
+    // MARK: Internal Nested Types
+
     // A MIDI message (status and two data bytes, the second zero if unused) and the host time it's due.
     internal struct Message {
 

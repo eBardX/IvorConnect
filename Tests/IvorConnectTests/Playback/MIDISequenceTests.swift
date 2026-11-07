@@ -12,25 +12,10 @@ struct MIDISequenceTests {
 
 extension MIDISequenceTests {
     @Test
-    func duration_isLastEventsTime() {
-        #expect(MIDISequence(events: []).duration == .zero)
-        #expect(Self.twoNotes.duration == .seconds(3))
-    }
-
-    @Test
-    func firstIndex_findsFirstEventAtOrAfter() {
-        let sequence = Self.twoNotes
-
-        #expect(sequence.events[sequence.firstIndex(at: .milliseconds(1_500))].time == .seconds(2))
-        #expect(sequence.events[sequence.firstIndex(at: .seconds(2))].time == .seconds(2))
-        #expect(sequence.firstIndex(at: .milliseconds(3_500)) == sequence.events.endIndex)
-    }
-
-    @Test
     func channelSettings_keepsLatestPerChannel() {
-        let sequence = MIDISequence(events: [Self.event(0, .programChange(1, 1)),
-                                             Self.event(0, .programChange(2, 1)),
-                                             Self.event(1, .programChange(1, 25))])
+        let sequence = MIDISequence(events: [sequenceEvent(0, .programChange(1, 1)),
+                                             sequenceEvent(0, .programChange(2, 1)),
+                                             sequenceEvent(1, .programChange(1, 25))])
 
         #expect(sequence.channelSettings(before: .zero).isEmpty)
         #expect(sequence.channelSettings(before: .milliseconds(500)) == [.programChange(1, 1),
@@ -43,10 +28,10 @@ extension MIDISequenceTests {
 
     @Test
     func channelSettings_replaysBankSelects() {
-        let sequence = MIDISequence(events: [Self.event(0, .programChange(1, 41)),
-                                             Self.event(2, .controlChange(1, .bankSelectMSB, 121)),
-                                             Self.event(2, .controlChange(1, .bankSelectLSB, 1)),
-                                             Self.event(2, .programChange(1, 20))])
+        let sequence = MIDISequence(events: [sequenceEvent(0, .programChange(1, 41)),
+                                             sequenceEvent(2, .controlChange(1, .bankSelectMSB, 121)),
+                                             sequenceEvent(2, .controlChange(1, .bankSelectLSB, 1)),
+                                             sequenceEvent(2, .programChange(1, 20))])
 
         #expect(sequence.channelSettings(before: .seconds(1)) == [.programChange(1, 41)])
         #expect(sequence.channelSettings(before: .seconds(3)) == [.controlChange(1, .bankSelectMSB, 121),
@@ -74,12 +59,12 @@ extension MIDISequenceTests {
 
     @Test
     func channelSettings_replaysPanAfterProgram() {
-        let sequence = MIDISequence(events: [Self.event(0, .controlChange(2, .panMSB, 0)),
-                                             Self.event(0, .programChange(1, 41)),
-                                             Self.event(0, .controlChange(1, .panMSB, 64)),
-                                             Self.event(0, .controlChange(1, .panLSB, 8)),
-                                             Self.event(1, .controlChange(1, .panMSB, 127)),
-                                             Self.event(1, .noteOn(1, 60, 64))])
+        let sequence = MIDISequence(events: [sequenceEvent(0, .controlChange(2, .panMSB, 0)),
+                                             sequenceEvent(0, .programChange(1, 41)),
+                                             sequenceEvent(0, .controlChange(1, .panMSB, 64)),
+                                             sequenceEvent(0, .controlChange(1, .panLSB, 8)),
+                                             sequenceEvent(1, .controlChange(1, .panMSB, 127)),
+                                             sequenceEvent(1, .noteOn(1, 60, 64))])
 
         #expect(sequence.channelSettings(before: .seconds(1)) == [.programChange(1, 41),
                                                                   .controlChange(1, .panMSB, 64),
@@ -91,14 +76,59 @@ extension MIDISequenceTests {
     }
 
     @Test
+    func duration_includesSystemEvents() {
+        let sequence = MIDISequence(events: [sequenceEvent(1, .noteOn(1, 60, 100))],
+                                    systemEvents: [MIDISequence.SystemEvent(time: .seconds(5), message: .stop)])
+
+        #expect(sequence.duration == .seconds(5))
+    }
+
+    @Test
+    func duration_isLastEventsTime() {
+        #expect(MIDISequence(events: []).duration == .zero)
+        #expect(Fixtures.twoNotes.duration == .seconds(3))
+    }
+
+    @Test
+    func duration_prefersTheLaterList() {
+        let sequence = MIDISequence(events: [sequenceEvent(7, .noteOn(1, 60, 100))],
+                                    systemEvents: [MIDISequence.SystemEvent(time: .seconds(5), message: .stop)])
+
+        #expect(sequence.duration == .seconds(7))
+    }
+
+    @Test
+    func firstIndex_findsFirstEventAtOrAfter() {
+        let sequence = Fixtures.twoNotes
+
+        #expect(sequence.events[sequence.firstIndex(at: .milliseconds(1_500))].time == .seconds(2))
+        #expect(sequence.events[sequence.firstIndex(at: .seconds(2))].time == .seconds(2))
+        #expect(sequence.firstIndex(at: .milliseconds(3_500)) == sequence.events.endIndex)
+    }
+
+    @Test
+    func firstSystemIndex_findsFirstEventAtOrAfter() {
+        let sequence = sequenceWithDumps()
+
+        #expect(sequence.firstSystemIndex(at: .zero) == 0)
+        #expect(sequence.firstSystemIndex(at: .milliseconds(1_500)) == 1)
+        #expect(sequence.firstSystemIndex(at: .seconds(60)) == sequence.systemEvents.endIndex)
+    }
+
+    @Test
+    func init_systemEventsDefaultToNone() {
+        #expect(MIDISequence(events: []).systemEvents.isEmpty)
+    }
+
+    @Test
     func synthSelections_carryEachChannelsBank() {
-        let sequence = MIDISequence(events: [Self.event(0, .controlChange(1, .bankSelectMSB, 121)),
-                                             Self.event(0, .controlChange(1, .bankSelectLSB, 1)),
-                                             Self.event(0, .programChange(1, 20)),
-                                             Self.event(0, .controlChange(3, .bankSelectMSB, 120)),
-                                             Self.event(0, .controlChange(3, .bankSelectLSB, 0)),
-                                             Self.event(0, .programChange(3, 9)),
-                                             Self.event(1, .programChange(2, 5))])
+        let sequence = MIDISequence(events: [sequenceEvent(0, .controlChange(1, .bankSelectMSB, 121)),
+                                             sequenceEvent(0, .controlChange(1, .bankSelectLSB, 1)),
+                                             sequenceEvent(0, .programChange(1, 20)),
+                                             sequenceEvent(0, .controlChange(3, .bankSelectMSB, 120)),
+                                             sequenceEvent(0, .controlChange(3, .bankSelectLSB, 0)),
+                                             sequenceEvent(0, .programChange(3, 9)),
+                                             sequenceEvent(1, .programChange(2, 5))])
         let variation = SynthOutput.Selection(channel: 1,
                                               patch: MIDIPatch(program: 20,
                                                                bank: MIDIBank(msb: 121, lsb: 1)))
@@ -114,22 +144,30 @@ extension MIDISequenceTests {
         #expect(sequence.synthSelections(on: [4]).isEmpty)
     }
 
-    // MARK: Internal Type Properties
+    @Test
+    func systemSettings_channelsLeaveOutEventsWithNoChannel() {
+        let settings = sequenceWithDumps().systemSettings(before: .seconds(60), on: [2])
 
-    //
-    // A program change, then a note from 0 s to 1 s and another from 2 s to 3 s, on channel 1.
-    //
-    static let twoNotes = MIDISequence(events: [event(0, .programChange(1, 1)),
-                                                event(0, .noteOn(1, 60, 100)),
-                                                event(1, .noteOff(1, 60, 0)),
-                                                event(2, .noteOn(1, 62, 100)),
-                                                event(3, .noteOff(1, 62, 0))])
+        #expect(settings.map(\.channel) == [2])
+    }
 
-    // MARK: Internal Type Methods
+    @Test
+    func systemSettings_keepsSystemExclusiveInOrder() {
+        let settings = sequenceWithDumps().systemSettings(before: .seconds(60))
 
-    static func event(_ seconds: Int,
-                      _ message: MIDIChannelMessage) -> MIDISequence.Event {
-        MIDISequence.Event(time: .seconds(seconds),
-                           message: message)
+        #expect(settings.map(\.channel) == [1, 2, nil])
+    }
+
+    @Test
+    func systemSettings_leavesOutEventsAtThePosition() {
+        #expect(sequenceWithDumps().systemSettings(before: .seconds(1)).isEmpty)
+    }
+
+    @Test
+    func systemSettings_leavesOutOtherSystemMessages() {
+        let sequence = MIDISequence(events: [],
+                                    systemEvents: [MIDISequence.SystemEvent(time: .zero, message: .start)])
+
+        #expect(sequence.systemSettings(before: .seconds(1)).isEmpty)
     }
 }

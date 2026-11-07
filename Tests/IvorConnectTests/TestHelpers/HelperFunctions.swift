@@ -4,6 +4,7 @@ import AVFAudio
 import Foundation
 @testable import IvorConnect
 import IvorMIDI
+import IvorMIDI2
 import Testing
 import XestiTools
 
@@ -119,4 +120,146 @@ func takeTimes(from queue: SynthOutput.RenderQueue,
     queue.takeMessages(dueBefore: end) { times.append($0.time) }
 
     return times
+}
+
+// An Identity Reply from a device that no model matches.
+func identityReply(deviceID: MIDIData1Value) -> MIDISystemMessage {
+    let identity = MIDIDeviceIdentity(manufacturer: .roland,
+                                      family: 1,
+                                      member: 2,
+                                      softwareRevision: [0, 0, 0, 1])
+
+    return MIDIIdentityMessage(content: .reply(identity),
+                               deviceID: deviceID).systemMessage ?? .eox
+}
+
+// Whether this process can reach the MIDI server. Now and then a process can't: CoreMIDI logs “null connection”, and
+// every client it tries to create fails, however long it keeps trying. This has only been seen in test processes started
+// right after another one.
+func isCoreMIDIAvailable() -> Bool {
+    (try? CoreMIDIClient(name: uniqueMIDIName())) != nil
+}
+
+// A discovery whose output answers each request with `replies`, delivered straight to a receiver.
+func makeDiscovery(timeout: Duration = .milliseconds(20),
+                   replies: @escaping @Sendable (MIDISystemMessage) -> [MIDISystemMessage]) -> MIDIDeviceDiscovery {
+    let receiver = CoreMIDISourceInput.Receiver()
+    let output = ReplyingOutput(deliver: { receiver.receive(words: sysExWords($0)) },
+                                replies: replies)
+
+    return MIDIDeviceDiscovery(output: output,
+                               timeout: timeout) { receiver.makeStream() }
+}
+
+// A state that plays `Fixtures.twoNotes` to `output`.
+func makeState(output: RecordingOutput) -> MIDISequencePlayer.State {
+    MIDISequencePlayer.State(sequence: Fixtures.twoNotes,
+                             router: MIDIRouter(outputs: [output]))
+}
+
+// A state that plays `Fixtures.trackedNotes` to `output`.
+func makeTrackedState(output: RecordingOutput) -> MIDISequencePlayer.State {
+    MIDISequencePlayer.State(sequence: Fixtures.trackedNotes,
+                             router: MIDIRouter(outputs: [output]))
+}
+
+// The moment the music starts when `dumps` of `Dumps`' messages are resent from `start`.
+func musicStart(after start: ContinuousClock.Instant,
+                dumps: Int) -> ContinuousClock.Instant {
+    start.advanced(by: Dumps.time * dumps)
+}
+
+// The next message from `stream`, or nil if none arrives in time.
+func nextMessage(from stream: AsyncStream<MIDISystemMessage>,
+                 timeout: Duration = .seconds(5)) async -> MIDISystemMessage? {
+    await withTaskGroup(of: MIDISystemMessage?.self) { group in
+        group.addTask {
+            var iterator = stream.makeAsyncIterator()
+
+            return await iterator.next()
+        }
+
+        group.addTask {
+            try? await Task.sleep(for: timeout)
+
+            return nil
+        }
+
+        let message = await (group.next()).flatMap(\.self)
+
+        group.cancelAll()
+
+        return message
+    }
+}
+
+// The Universal MIDI Packet words of `message`, as a source would send them.
+func sysExWords(_ message: MIDISystemMessage) -> [UInt32] {
+    (message.packets(group: 1) ?? []).flatMap(\.words)
+}
+
+// A TX81Z's full keyboard dump, as it would transmit it on `channel`.
+func tx81zDump(onChannel channel: MIDIChannel) throws -> MIDISystemMessage {
+    let frequencies = (0..<128).map { MIDITuningFrequency(semitone: MIDIData1Value(clamping: $0)) }
+    let tuning = try #require(MIDIDeviceTuning(frequencies: frequencies))
+    let output = try TX81ZTuningCodec().messages(for: tuning,
+                                                 slot: .tx81zFullKeyboard,
+                                                 address: .channel(channel))
+
+    return try #require(output.messages.first)
+}
+
+// The destination called `name`, once CoreMIDI lists it.
+func waitForDestination(named name: String,
+                        in client: CoreMIDIClient) async throws -> CoreMIDIDestination {
+    _ = await waitUntil { client.destinations.contains { $0.name == name } }
+
+    return try #require(client.destinations.first { $0.name == name })
+}
+
+// A name no other test's client or virtual source uses.
+func uniqueMIDIName() -> String {
+    "IvorConnectTests \(UUID().uuidString)"
+}
+
+// The source called `name`, once CoreMIDI lists it.
+func waitForSource(named name: String,
+                   in client: CoreMIDIClient) async throws -> CoreMIDISource {
+    _ = await waitUntil { client.sources.contains { $0.name == name } }
+
+    return try #require(client.sources.first { $0.name == name })
+}
+
+// Waits for `condition`, and returns whether it came true in time.
+func waitUntil(timeout: Duration = .seconds(5),
+               _ condition: () -> Bool) async -> Bool {
+    let deadline = ContinuousClock.now + timeout
+
+    while !condition(), ContinuousClock.now < deadline {
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+
+    return condition()
+}
+
+// An event `seconds` from the start of a sequence.
+func sequenceEvent(_ seconds: Int,
+                   _ message: IvorMIDI.MIDIChannelMessage) -> MIDISequence.Event {
+    MIDISequence.Event(time: .seconds(seconds),
+                       message: message)
+}
+
+// `Fixtures.twoNotes`, with `Dumps`' messages at 1 s for channel 1, at 2 s for channel 2, and at 3 s for no
+// channel, then a start message at 4 s.
+func sequenceWithDumps() -> MIDISequence {
+    MIDISequence(events: Fixtures.twoNotes.events,
+                 systemEvents: [MIDISequence.SystemEvent(time: .seconds(1), message: Dumps.first, channel: 1),
+                                MIDISequence.SystemEvent(time: .seconds(2), message: Dumps.second, channel: 2),
+                                MIDISequence.SystemEvent(time: .seconds(3), message: Dumps.third),
+                                MIDISequence.SystemEvent(time: .seconds(4), message: .start)])
+}
+
+func stateWithDumps(output: any MIDIOutput) -> MIDISequencePlayer.State {
+    MIDISequencePlayer.State(sequence: sequenceWithDumps(),
+                             router: MIDIRouter(outputs: [output]))
 }

@@ -25,6 +25,8 @@ internal import XestiTools
 /// (headphones plugged in, say) stops it. On iOS, restart it with
 /// ``restart()`` after an audio session interruption ends.
 ///
+/// System messages are ignored, because Apple’s synth ignores them.
+///
 /// - Important:    AUMIDISynth crashes if two instances load a sound bank
 ///                 or render at once. Never create a second synth while one
 ///                 is loading.
@@ -176,7 +178,7 @@ extension SynthOutput {
     ///
     /// The synth sounds only instruments it has loaded: on a device, a
     /// channel that selects any other stays silent. (The iOS simulator and
-    /// macOS load bank 0's programs on demand, but no other bank's.) Call
+    /// macOS load bank 0’s programs on demand, but no other bank’s.) Call
     /// this before playing anything that selects an instrument outside bank
     /// 0. A selection the sound bank lacks loads the same program in bank 0
     /// instead — or, in the percussion bank, the first kit — which is what
@@ -327,45 +329,6 @@ extension SynthOutput {
     // MARK: Private Instance Methods
 
     // Runs on `queue`.
-    private func _releaseDueMessages() {
-        let now = ContinuousClock.now
-        let hostNow = AVAudioTime.seconds(forHostTime: mach_absolute_time())
-        let horizon = now.advanced(by: renderQueue == nil ? .microseconds(500) : lead)
-        let delay = renderQueue == nil ? 0 : delay
-
-        while let first = pending.first, first.time <= horizon {
-            pending.removeFirst()
-
-            guard first.bytes.count > 1
-            else { continue }
-
-            let message = RenderQueue.Message(data1: first.bytes[1],
-                                              data2: first.bytes.count > 2 ? first.bytes[2] : 0,
-                                              status: first.bytes[0],
-                                              time: hostNow + (first.time - now) / .seconds(1) + delay)
-
-            // Straight to the synth only when rendering offline, or if the render queue is full, which means the
-            // audio has stopped. Then a note-on would only sound late, with all the others, when it starts again.
-            if let renderQueue {
-                guard !renderQueue.push(message),
-                      !message.isNoteOn
-                else { continue }
-            }
-
-            MusicDeviceMIDIEvent(audioUnit,
-                                 UInt32(message.status),
-                                 UInt32(message.data1),
-                                 UInt32(message.data2),
-                                 0)
-        }
-
-        // A dispatch deadline and the sender's clock can disagree by a hair, so make sure nothing is stranded.
-        if let next = pending.first {
-            _scheduleRelease(at: next.time)
-        }
-    }
-
-    // Runs on `queue`.
     private func _preload(_ selections: [Selection]) throws(Error) {
         let selections = selections.map(\.loadable).filter { !preloaded.contains($0) }
 
@@ -401,6 +364,45 @@ extension SynthOutput {
         for channel in Set(selections.map(\.channel.uintValue)) {
             MusicDeviceMIDIEvent(audioUnit, UInt32(0xb0 | (channel - 1)), 0, 0, 0)
             MusicDeviceMIDIEvent(audioUnit, UInt32(0xb0 | (channel - 1)), 32, 0, 0)
+        }
+    }
+
+    // Runs on `queue`.
+    private func _releaseDueMessages() {
+        let now = ContinuousClock.now
+        let hostNow = AVAudioTime.seconds(forHostTime: mach_absolute_time())
+        let horizon = now.advanced(by: renderQueue == nil ? .microseconds(500) : lead)
+        let delay = renderQueue == nil ? 0 : delay
+
+        while let first = pending.first, first.time <= horizon {
+            pending.removeFirst()
+
+            guard first.bytes.count > 1
+            else { continue }
+
+            let message = RenderQueue.Message(data1: first.bytes[1],
+                                              data2: first.bytes.count > 2 ? first.bytes[2] : 0,
+                                              status: first.bytes[0],
+                                              time: hostNow + (first.time - now) / .seconds(1) + delay)
+
+            // Straight to the synth only when rendering offline, or if the render queue is full, which means the
+            // audio has stopped. Then a note-on would only sound late, with all the others, when it starts again.
+            if let renderQueue {
+                guard !renderQueue.push(message),
+                      !message.isNoteOn
+                else { continue }
+            }
+
+            MusicDeviceMIDIEvent(audioUnit,
+                                 UInt32(message.status),
+                                 UInt32(message.data1),
+                                 UInt32(message.data2),
+                                 0)
+        }
+
+        // A dispatch deadline and the sender's clock can disagree by a hair, so make sure nothing is stranded.
+        if let next = pending.first {
+            _scheduleRelease(at: next.time)
         }
     }
 
@@ -452,6 +454,21 @@ extension SynthOutput: MIDIOutput {
 
             _scheduleRelease(at: time)
         }
+    }
+
+    /// Ignores a system message.
+    ///
+    /// Testing on macOS found that Apple’s synth ignores every system exclusive
+    /// message tried, including the master device controls, the MIDI Tuning
+    /// messages, and the General MIDI on and off messages, while still reporting
+    /// success. So a tuning sent only to this output has no effect, and no error
+    /// is reported.
+    ///
+    /// - Parameter message:    The message, which is ignored.
+    /// - Parameter time:       The time, which is ignored.
+    public func send(message: IvorMIDI.MIDISystemMessage,
+                     at time: ContinuousClock.Instant) {
+        // Nothing to do: see above.
     }
 }
 

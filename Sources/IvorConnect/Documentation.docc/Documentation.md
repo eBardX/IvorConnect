@@ -9,8 +9,8 @@ MIDI playback through CoreMIDI and Apple’s built-in General MIDI synth.
 ## Overview
 
 The IvorConnect framework sends [IvorMIDI](https://github.com/eBardX/IvorMIDI)
-channel messages, each timestamped for the moment it should sound, to
-CoreMIDI and to Apple’s multitimbral MIDI synth. Every destination is a
+channel and system messages, each timestamped for the moment it should sound,
+to CoreMIDI and to Apple’s multitimbral MIDI synth. Every destination is a
 ``MIDIOutput``:
 
 - ``CoreMIDISourceOutput`` publishes a virtual source that other apps can
@@ -56,6 +56,14 @@ sequence playback, and platform notes.
 - ``CoreMIDISourceOutput``
 - ``SynthOutput``
 
+### Input
+
+- ``CoreMIDISourceInput``
+
+### Devices
+
+- ``MIDIDeviceDiscovery``
+
 ### Routing
 
 - ``MIDIRouter``
@@ -71,3 +79,4 @@ sequence playback, and platform notes.
 
 - ``CoreMIDIClient``
 - ``CoreMIDIDestination``
+- ``CoreMIDISource``

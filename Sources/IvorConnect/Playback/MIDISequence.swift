@@ -2,29 +2,43 @@
 
 public import IvorMIDI
 
-/// A fixed sequence of channel messages, each at its time from the start,
-/// in the order they are sent.
+/// A fixed sequence of messages, each at its time from the start, in the order
+/// they are sent.
 ///
-/// Play one with ``MIDISequencePlayer``. Besides the events, a sequence can
+/// Channel messages are in ``events``, and system messages, such as a tuning
+/// dump, are in ``systemEvents``. Play a sequence with ``MIDISequencePlayer``,
+/// which sends the two lists in time order. Besides the events, a sequence can
 /// tell what each channel has been set to by a given time, so that playing
 /// from partway through — or a device that comes back partway through —
-/// sounds the right instruments.
+/// sounds the right instruments, in the right tuning.
 public struct MIDISequence {
 
     // MARK: Public Initializers
 
     /// Creates a `MIDISequence` instance with the provided events.
     ///
-    /// - Parameter events: The events, in the order they are to be sent.
-    ///                     Their times must never decrease.
-    public init(events: [Event]) {
+    /// Nothing signals that a long system exclusive message has arrived, so
+    /// leave time for one before anything that depends on it: about 0.32 ms per
+    /// byte on a MIDI cable.
+    ///
+    /// - Parameter events:         The channel events, in the order they are to
+    ///                             be sent. Their times must never decrease.
+    /// - Parameter systemEvents:   The system events, in the order they are to
+    ///                             be sent. Their times must never decrease.
+    ///                             Defaults to none.
+    public init(events: [Event],
+                systemEvents: [SystemEvent] = []) {
         self.events = events
+        self.systemEvents = systemEvents
     }
 
     // MARK: Public Instance Properties
 
-    /// The events, in the order they are sent.
+    /// The channel events, in the order they are sent.
     public let events: [Event]
+
+    /// The system events, in the order they are sent.
+    public let systemEvents: [SystemEvent]
 }
 
 // MARK: -
@@ -33,23 +47,13 @@ extension MIDISequence {
 
     // MARK: Public Instance Properties
 
-    /// The time of the last event, or zero if there are none.
+    /// The time of the last event of either kind, or zero if there are none.
     public var duration: Duration {
-        events.last?.time ?? .zero
+        max(events.last?.time ?? .zero,
+            systemEvents.last?.time ?? .zero)
     }
 
     // MARK: Public Instance Methods
-
-    /// Returns where to pick up from the provided position: the index of the
-    /// first event at or after it.
-    ///
-    /// - Parameter position:   The time from the start.
-    ///
-    /// - Returns:  The index of the first event at or after `position`, or
-    ///             the end index if there is none.
-    public func firstIndex(at position: Duration) -> Int {
-        events.firstIndex { $0.time >= position } ?? events.endIndex
-    }
 
     /// Returns the messages that set each channel to the bank, program, pan
     /// and expression it has reached by the provided position.
@@ -58,7 +62,7 @@ extension MIDISequence {
     /// select MSB and LSB, then its latest program change, then its latest
     /// pan MSB and LSB, then its latest expression MSB and LSB — each only
     /// if it has had one by then. A pan or expression LSB sent before the
-    /// channel's latest MSB is left out, since the MSB resets it.
+    /// channel’s latest MSB is left out, since the MSB resets it.
     ///
     /// - Parameter position:   The time from the start. Events at this time
     ///                         don’t count, since they are still to be sent.
@@ -100,6 +104,28 @@ extension MIDISequence {
         }
     }
 
+    /// Returns where to pick up from the provided position: the index of the
+    /// first event at or after it.
+    ///
+    /// - Parameter position:   The time from the start.
+    ///
+    /// - Returns:  The index of the first event at or after `position`, or
+    ///             the end index if there is none.
+    public func firstIndex(at position: Duration) -> Int {
+        events.firstIndex { $0.time >= position } ?? events.endIndex
+    }
+
+    /// Returns where to pick up the system events from the provided position:
+    /// the index of the first one at or after it.
+    ///
+    /// - Parameter position:   The time from the start.
+    ///
+    /// - Returns:  The index of the first system event at or after `position`,
+    ///             or the end index if there is none.
+    public func firstSystemIndex(at position: Duration) -> Int {
+        systemEvents.firstIndex { $0.time >= position } ?? systemEvents.endIndex
+    }
+
     /// Returns every patch the events select on the provided channels, in
     /// order, for the built-in synth to load before playing them (see
     /// ``SynthOutput/preload(_:)``).
@@ -139,6 +165,33 @@ extension MIDISequence {
         }
 
         return selections
+    }
+
+    /// Returns the system exclusive events that set up devices by the provided
+    /// position, in order.
+    ///
+    /// A tuning is state, like a program, so a device needs it even if playback
+    /// starts after the event that sends it. Other system messages, such as a
+    /// start message, aren’t state, and aren’t included.
+    ///
+    /// - Parameter position:   The time from the start. Events at this time
+    ///                         don’t count, since they are still to be sent.
+    /// - Parameter channels:   The channels to include, or `nil` for all of
+    ///                         the events. An event with no channel is included
+    ///                         only if this is `nil`.
+    ///
+    /// - Returns:  The system exclusive events before `position`.
+    public func systemSettings(before position: Duration,
+                               on channels: Set<MIDIChannel>? = nil) -> [SystemEvent] {
+        systemEvents.prefix(firstSystemIndex(at: position)).filter { event in
+            guard case .systemExclusive = event.message
+            else { return false }
+
+            guard let channels
+            else { return true }
+
+            return event.channel.map { channels.contains($0) } ?? false
+        }
     }
 
     // MARK: Private Type Properties
