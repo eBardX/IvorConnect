@@ -105,11 +105,18 @@ extension MIDIRouter {
 
     /// Silences every note on all 16 channels, after everything already
     /// scheduled.
+    ///
+    /// Each channel’s pedals (sustain, portamento, sostenuto, soft and
+    /// legato) are lifted before its notes are turned off. All-notes-off
+    /// does not release notes held by the sustain or sostenuto pedal, and a
+    /// pedal left down would carry over into whatever plays next.
     public func reset() {
         for number in 1...Self.channelCount {
-            send(message: .controlChange(MIDIChannel(clamping: number),
-                                         .allNotesOff,
-                                         0))
+            let channel = MIDIChannel(clamping: number)
+
+            _releasePedals(on: channel)
+
+            send(message: .controlChange(channel, .allNotesOff, 0))
         }
     }
 
@@ -152,8 +159,8 @@ extension MIDIRouter {
 
     /// Sends a channel to a different output from now on.
     ///
-    /// The old output is silenced on that channel first (sustain released
-    /// and every note off), since it will not receive the note-offs to come.
+    /// The old output is silenced on that channel first (pedals lifted and
+    /// every note off), since it will not receive the note-offs to come.
     ///
     /// - Parameter output:     The new output, or `nil` for nowhere.
     /// - Parameter channel:    The channel.
@@ -169,7 +176,8 @@ extension MIDIRouter {
         guard !Self._isSame(routes[index], route)
         else { return false }
 
-        send(message: .controlChange(channel, .sustain, 0))
+        _releasePedals(on: channel)
+
         send(message: .controlChange(channel, .allNotesOff, 0))
 
         routes[index] = route
@@ -196,6 +204,13 @@ extension MIDIRouter {
 
     private static let channelCount = 16
 
+    // The pedal controllers (64–68), in controller order.
+    private static let pedalControllers: [MIDIController] = [.sustain,
+                                                             .portamento,
+                                                             .sostenuto,
+                                                             .softPedal,
+                                                             .legato]
+
     // MARK: Private Type Methods
 
     private static func _index(of channel: MIDIChannel) -> Int {
@@ -218,6 +233,13 @@ extension MIDIRouter {
         }
 
         return inUse
+    }
+
+    // Lifts every pedal on `channel`, after everything already scheduled.
+    private func _releasePedals(on channel: MIDIChannel) {
+        for controller in Self.pedalControllers {
+            send(message: .controlChange(channel, controller, 0))
+        }
     }
 
     private func _routeSpareChannels() {

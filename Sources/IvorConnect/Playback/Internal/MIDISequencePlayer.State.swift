@@ -154,7 +154,7 @@ extension MIDISequencePlayer.State {
     }
 
     // Picking up partway through, each device first gets the dumps it would have had, then each channel gets the
-    // program and pan it would have reached, and its volume. The music waits for the dumps, or a note could overtake
+    // bank, program, pan, expression and pedal levels it would have reached, and its volume. The music waits for the dumps, or a note could overtake
     // them, so the reported position stays put until it starts.
     internal mutating func start(from position: Duration,
                                  at startTime: ContinuousClock.Instant) {

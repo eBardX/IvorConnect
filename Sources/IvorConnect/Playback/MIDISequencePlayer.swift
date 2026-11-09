@@ -7,10 +7,11 @@ public import IvorMIDI
 ///
 /// ``start(from:)`` plays from a position in the sequence, first sending the
 /// system exclusive events before it, then setting each channel to the bank,
-/// program, pan and expression it would have reached there, and to its volume;
-/// ``stop()`` stops, telling every channel to let go of its notes. The
-/// player doesn’t stop by itself after the last event, so whoever drives it
-/// watches ``position(at:)`` and calls ``stop()``.
+/// program, pan, expression and pedal levels it would have reached there, and
+/// to its volume; ``stop()`` stops, telling every channel to lift its pedals
+/// and let go of its notes. The player doesn’t stop by itself after the last
+/// event, so whoever drives it watches ``position(at:)`` and calls
+/// ``stop()``.
 ///
 /// Whether playing or not, ``setMutedTracks(_:)`` silences the notes of
 /// chosen tracks and ``setVolumes(_:)`` sets the volumes of chosen channels,
@@ -77,9 +78,9 @@ extension MIDISequencePlayer {
     }
 
     /// Sends the provided channels the system exclusive events, banks, programs,
-    /// pans and expression they have reached by now, and the volumes set with
-    /// ``setVolumes(_:)``, for a device that came back while playing and so
-    /// missed them.
+    /// pans, expression and pedal levels they have reached by now, and the
+    /// volumes set with ``setVolumes(_:)``, for a device that came back while
+    /// playing and so missed them.
     ///
     /// The music keeps playing while a dump arrives. A system event with no
     /// channel isn’t sent, because it would reach every device, so give an event
@@ -146,8 +147,8 @@ extension MIDISequencePlayer {
     }
 
     /// Stops playing, and returns once the player’s thread has finished and
-    /// every channel has been told to let go of its notes. Does nothing if
-    /// not playing.
+    /// every channel has been told to lift its pedals and let go of its
+    /// notes. Does nothing if not playing.
     public func stop() {
         guard scheduler.isStarted
         else { return }

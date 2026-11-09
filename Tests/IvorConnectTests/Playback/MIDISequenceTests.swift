@@ -40,6 +40,49 @@ extension MIDISequenceTests {
     }
 
     @Test
+    func channelSettings_replaysLatestPedalLevels() {
+        let sequence = MIDISequence(events: [sequenceEvent(1, .controlChange(1, .sustain, 127)),
+                                             sequenceEvent(1, .noteOn(1, 60, 100)),
+                                             sequenceEvent(3, .controlChange(1, .sustain, 0))])
+
+        #expect(sequence.channelSettings(before: .milliseconds(500)).isEmpty)
+        #expect(sequence.channelSettings(before: .seconds(2)) == [.controlChange(1, .sustain, 127)])
+        #expect(sequence.channelSettings(before: .seconds(4)) == [.controlChange(1, .sustain, 0)])
+    }
+
+    @Test
+    func channelSettings_replaysOnePedalMessagePerControllerAfterExpression() {
+        let sequence = MIDISequence(events: [sequenceEvent(0, .controlChange(1, .legato, 127)),
+                                             sequenceEvent(0, .controlChange(1, .sustain, 127)),
+                                             sequenceEvent(0, .controlChange(1, .softPedal, 127)),
+                                             sequenceEvent(0, .controlChange(1, .sostenuto, 127)),
+                                             sequenceEvent(0, .controlChange(1, .portamento, 127)),
+                                             sequenceEvent(0, .controlChange(1, .expressionControllerMSB, 100)),
+                                             sequenceEvent(1, .controlChange(1, .sustain, 0)),
+                                             sequenceEvent(1, .controlChange(1, .sustain, 64)),
+                                             sequenceEvent(2, .controlChange(1, .softPedal, 0)),
+                                             sequenceEvent(2, .controlChange(1, .sostenuto, 0))])
+
+        #expect(sequence.channelSettings(before: .seconds(3)) == [.controlChange(1, .expressionControllerMSB, 100),
+                                                                  .controlChange(1, .sustain, 64),
+                                                                  .controlChange(1, .portamento, 127),
+                                                                  .controlChange(1, .sostenuto, 0),
+                                                                  .controlChange(1, .softPedal, 0),
+                                                                  .controlChange(1, .legato, 127)])
+    }
+
+    @Test
+    func channelSettings_pedalsFollowTheChannelFilter() {
+        let sequence = MIDISequence(events: [sequenceEvent(0, .controlChange(1, .sustain, 127)),
+                                             sequenceEvent(0, .controlChange(2, .sostenuto, 127))])
+
+        #expect(sequence.channelSettings(before: .seconds(1),
+                                         on: [2]) == [.controlChange(2, .sostenuto, 127)])
+        #expect(sequence.channelSettings(before: .seconds(1),
+                                         on: [3]).isEmpty)
+    }
+
+    @Test
     func channelSettings_replaysExpressionAfterPan() {
         let sequence = MIDISequence(events: [.init(time: .zero, message: .controlChange(1, .expressionControllerMSB, 40)),
                                              .init(time: .zero, message: .controlChange(1, .expressionControllerLSB, 8)),

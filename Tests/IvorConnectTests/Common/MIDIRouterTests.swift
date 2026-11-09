@@ -113,8 +113,8 @@ extension MIDIRouterTests {
 
         router.reset()
 
-        #expect(first.sent.count == 2 + 13)         // its channels 1 and 3, then 4–16
-        #expect(second.sent.count == 1 + 13)
+        #expect(first.sent.count == 6 * (2 + 13))   // its channels 1 and 3, then 4–16
+        #expect(second.sent.count == 6 * (1 + 13))
         #expect(router.outputs(forChannel: 16).count == 2)
     }
 
@@ -134,6 +134,27 @@ extension MIDIRouterTests {
     }
 
     @Test
+    func reset_releasesPedalsBeforeAllNotesOffOnEveryChannel() {
+        let output = RecordingOutput()
+        let router = MIDIRouter(outputs: [output])
+
+        router.reset()
+
+        let expected = (1...16).flatMap { (number: Int) -> [MIDIChannelMessage] in
+            let channel = MIDIChannel(clamping: number)
+
+            return [.controlChange(channel, .sustain, 0),
+                    .controlChange(channel, .portamento, 0),
+                    .controlChange(channel, .sostenuto, 0),
+                    .controlChange(channel, .softPedal, 0),
+                    .controlChange(channel, .legato, 0),
+                    .controlChange(channel, .allNotesOff, 0)]
+        }
+
+        #expect(output.sent.map(\.message) == expected)
+    }
+
+    @Test
     func reset_sendsAllNotesOffOnEveryChannelAfterScheduledNotes() {
         let output = RecordingOutput()
         let router = MIDIRouter(outputs: [output])
@@ -144,9 +165,9 @@ extension MIDIRouterTests {
 
         let resets = output.sent.dropFirst()
 
-        #expect(resets.count == 16)
+        #expect(resets.count == 16 * 6)
         #expect(resets.allSatisfy { $0.time >= future })
-        #expect(resets.first?.message == .controlChange(1, .allNotesOff, 0))
+        #expect(resets.first?.message == .controlChange(1, .sustain, 0))
         #expect(resets.last?.message == .controlChange(16, .allNotesOff, 0))
     }
 
@@ -232,7 +253,7 @@ extension MIDIRouterTests {
 
         router.send(message: .noteOn(1, 60, 100))
 
-        #expect(output.sent.count == 2)             // sustain off and all notes off, but no note
+        #expect(output.sent.count == 6)             // pedals off and all notes off, but no note
         #expect(router.outputs(forChannel: 1).isEmpty)
         #expect(router.outputs(forChannel: 2).isEmpty)
     }
@@ -248,7 +269,12 @@ extension MIDIRouterTests {
 
         router.send(message: .noteOn(2, 60, 100))
 
-        #expect(old.sent.map(\.message) == [.controlChange(2, .sustain, 0), .controlChange(2, .allNotesOff, 0)])
+        #expect(old.sent.map(\.message) == [.controlChange(2, .sustain, 0),
+                                            .controlChange(2, .portamento, 0),
+                                            .controlChange(2, .sostenuto, 0),
+                                            .controlChange(2, .softPedal, 0),
+                                            .controlChange(2, .legato, 0),
+                                            .controlChange(2, .allNotesOff, 0)])
         #expect(new.sent.map(\.message) == [.noteOn(2, 60, 100)])
         #expect(router.outputs(forChannel: 9).count == 2)
     }

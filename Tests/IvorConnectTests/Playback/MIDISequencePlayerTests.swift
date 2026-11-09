@@ -76,6 +76,32 @@ extension MIDISequencePlayerTests {
     }
 
     @Test
+    func start_sendsPedalLevelsReachedBeforeThePosition() {
+        let sequence = MIDISequence(events: [sequenceEvent(1, .controlChange(1, .sustain, 127)),
+                                             sequenceEvent(1, .noteOn(1, 60, 100)),
+                                             sequenceEvent(3, .controlChange(1, .sustain, 0)),
+                                             sequenceEvent(3, .noteOff(1, 60, 0))])
+
+        for (position, expected) in [(Duration.milliseconds(500), [MIDIChannelMessage]()),
+                                     (.seconds(2), [.controlChange(1, .sustain, 127)]),
+                                     (.seconds(4), [.controlChange(1, .sustain, 0)])] {
+            let output = RecordingOutput()
+            let player = MIDISequencePlayer(sequence: sequence,
+                                            channelOutputs: [output])
+
+            player.start(from: position)
+
+            let pedals = output.sent.map(\.message).filter {
+                if case .controlChange(_, .sustain, _) = $0 { true } else { false }
+            }
+
+            #expect(pedals == expected)
+
+            player.stop()
+        }
+    }
+
+    @Test
     func start_sendsDueMessages_thenStopSilences() async throws {
         let output = RecordingOutput()
         let player = MIDISequencePlayer(sequence: Fixtures.twoNotes,
